@@ -1,0 +1,27 @@
+name: article
+label: Article
+storage: database
+fields:
+  - name: title
+    type: text
+    required: true
+  - name: slug
+    type: slug
+    source: title
+  - name: body
+    type: rich_text
+  - name: authors
+    type: relation
+    target: user
+    cardinality: many
+  - name: tags
+    type: text
+    list: true
+  - name: seo_description
+    type: text
+  - name: internal_notes
+    type: text
+    access:
+      read: [admin]
+      write: [admin]
+workflow: editorial

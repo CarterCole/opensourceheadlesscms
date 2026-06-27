@@ -1,0 +1,49 @@
+[server]
+http_port = 8080
+grpc_port = 50051
+jwt_secret = "changeme-use-a-real-secret-in-production"
+env = "development"     # "production" disables GraphQL playground
+
+[storage]
+backend = "database"    # "database" | "flatfile"
+
+[database]
+driver = "sqlite"       # "sqlite" | "postgres" | "d1"
+url = "sqlite://cms.db"
+auto_migrate = true
+
+# PostgreSQL example:
+# [database]
+# driver = "postgres"
+# url = "postgres://user:pass@localhost:5432/cms"
+
+# Cloudflare D1 example:
+# [database]
+# driver = "d1"
+# cf_account_id = "..."
+# cf_database_id = "..."
+# cf_api_token = "..."
+
+[cache]
+l1_max_capacity = 10_000
+l1_ttl_seconds = 5
+l2_enabled = false
+# l2_redis_url = "redis://localhost:6379"
+# l2_ttl_seconds = 60
+
+[flatfile]
+content_dir = "./content"
+git_auto_commit = true
+git_author_name = "CMS Bot"
+git_author_email = "cms@example.com"
+
+[config_dirs]
+content_types = "./content-types"
+workflows = "./workflows"
+roles = "./roles"
+
+[media]
+storage = "local"       # "local" | "s3" | "r2"
+local_dir = "./media"
+# s3_bucket = "my-bucket"
+# s3_region = "us-east-1"

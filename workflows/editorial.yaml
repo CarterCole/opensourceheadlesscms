@@ -1,0 +1,21 @@
+name: editorial
+states:
+  - draft
+  - in_review
+  - approved
+  - published
+  - archived
+transitions:
+  - from: draft
+    to: in_review
+    roles: [editor, admin]
+  - from: in_review
+    to: approved
+    roles: [senior_editor, admin]
+  - from: approved
+    to: published
+    roles: [admin]
+    trigger: scheduled_at
+  - from: published
+    to: archived
+    roles: [admin]

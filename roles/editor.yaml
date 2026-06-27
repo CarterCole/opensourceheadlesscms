@@ -1,0 +1,11 @@
+name: editor
+permissions:
+  article:
+    create: true
+    read: true
+    update: true
+    delete: false
+    fields:
+      internal_notes:
+        read: false
+        write: false

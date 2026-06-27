@@ -1,0 +1,7 @@
+name: admin
+permissions:
+  "*":
+    create: true
+    read: true
+    update: true
+    delete: true

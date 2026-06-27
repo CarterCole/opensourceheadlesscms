@@ -1,0 +1,34 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node / frontend / sdk
+node_modules/
+dist/
+.next/
+.turbo/
+
+# Environment & secrets
+.env
+.env.local
+*.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CMS runtime
+cms.toml
+logs/
+content/
