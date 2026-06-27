@@ -20,4 +20,4 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tower = { version = "0.4" }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }

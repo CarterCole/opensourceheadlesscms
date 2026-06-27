@@ -47,4 +47,8 @@ impl SchemaContext {
     pub fn can(&self, action: cms_core::Action, content_type: &str) -> bool {
         self.rbac.can(&self.user_roles, action, content_type)
     }
+
+    pub fn config(&self) -> &CmsConfig {
+        &self.config
+    }
 }

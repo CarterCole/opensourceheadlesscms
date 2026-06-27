@@ -1,3 +1,4 @@
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{
     extract::{Json, State},
     http::StatusCode,
@@ -12,7 +13,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JwtClaims {
-    pub sub: String,        // user id
+    pub sub: String,
     pub email: String,
     pub roles: Vec<String>,
     pub exp: i64,
@@ -62,26 +63,44 @@ pub async fn login_handler(
     State(state): State<AuthState>,
     Json(req): Json<LoginRequest>,
 ) -> impl IntoResponse {
+    let invalid = || {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "invalid credentials"})),
+        )
+            .into_response()
+    };
+
     let user = match state.store.get_user_by_email(&req.email).await {
         Ok(u) => u,
-        Err(CmsError::NotFound(_)) => {
-            return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "invalid credentials"}))).into_response();
-        }
+        Err(CmsError::NotFound(_)) => return invalid(),
         Err(e) => {
             tracing::error!("login db error: {e}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
 
-    // Verify password hash — stored in DB but not on User struct; re-fetch raw
-    // For now: compare via argon2. In practice, get the hash from DB directly.
-    // We store password_hash on the DB row; we need a separate query.
-    // Simplified: trust the email lookup for now, verify via a raw query.
-    // TODO: add get_password_hash(user_id) to ContentStore or restructure.
-    // For the scaffold we just return the token after email lookup succeeds.
-    // Full password verification wired in cms-db once the auth flow is complete.
+    let hash = match state.store.get_password_hash(&req.email).await {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::error!("get_password_hash error: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
 
-    let exp = Utc::now().timestamp() + 86_400; // 24h
+    let parsed = match PasswordHash::new(&hash) {
+        Ok(p) => p,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    if Argon2::default()
+        .verify_password(req.password.as_bytes(), &parsed)
+        .is_err()
+    {
+        return invalid();
+    }
+
+    let exp = Utc::now().timestamp() + 86_400;
     let claims = JwtClaims {
         sub: user.id.clone(),
         email: user.email.clone(),

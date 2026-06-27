@@ -1,5 +1,7 @@
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use chrono::Utc;
 use cms_cache::{MokaCache, TwoLayerCache};
+use cms_core::Pagination;
 use cms_config::ConfigLoader;
 use cms_db::SqliteStore;
 use cms_http::{build_router, router::RouterConfig};
@@ -46,6 +48,9 @@ async fn main() -> anyhow::Result<()> {
         info!("migrations applied");
     }
 
+    // First-run: seed an admin account if no users exist
+    seed_first_admin(&store).await?;
+
     let l1 = MokaCache::new(
         config.server.cache.l1_max_capacity,
         Duration::from_secs(config.server.cache.l1_ttl_seconds),
@@ -90,6 +95,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let dev_mode = config.server.env == "development";
+    let admin_ui_dir = std::env::var("CMS_ADMIN_UI_DIR")
+        .unwrap_or_else(|_| "frontend/dist".to_string());
     let router = build_router(RouterConfig {
         store,
         cache,
@@ -97,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         ctx_template,
         jwt_secret: config.server.jwt_secret.clone(),
         dev_mode,
+        admin_ui_dir: Some(admin_ui_dir),
     });
 
     let addr = format!("0.0.0.0:{}", config.server.http_port);
@@ -107,6 +115,35 @@ async fn main() -> anyhow::Result<()> {
     }
 
     axum::serve(listener, router).await?;
+    Ok(())
+}
+
+async fn seed_first_admin(store: &Arc<dyn cms_core::ContentStore>) -> anyhow::Result<()> {
+    let users = store.list_users(Pagination { page: 1, per_page: 1 }).await
+        .map_err(|e| anyhow::anyhow!("list_users: {e}"))?;
+    if !users.is_empty() {
+        return Ok(());
+    }
+
+    let password = uuid::Uuid::new_v4().to_string().replace('-', "")[..16].to_string();
+    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+    let hash = Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|e| anyhow::anyhow!("argon2: {e}"))?
+        .to_string();
+
+    store.create_user("admin@localhost", "Admin", &hash, vec!["admin".to_string()]).await
+        .map_err(|e| anyhow::anyhow!("create_user: {e}"))?;
+
+    println!();
+    println!("╔══════════════════════════════════════════════════╗");
+    println!("║            CMS FIRST RUN — ADMIN CREATED         ║");
+    println!("║  Email:    admin@localhost                       ║");
+    println!("║  Password: {password:<38}║");
+    println!("║  Change this password after first login!         ║");
+    println!("╚══════════════════════════════════════════════════╝");
+    println!();
+
     Ok(())
 }
 

@@ -7,13 +7,13 @@ use axum::{
 use cms_core::{CacheLayer, ContentStore};
 use cms_schema::SchemaContext;
 use std::sync::Arc;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 
 use crate::{
     auth::{login_handler, AuthState},
     graphql::{graphql_handler, graphql_playground_handler},
     middleware::{jwt_auth_middleware, AuthMiddlewareState},
-    rest::{get_by_slug_handler, health_handler, list_handler, search_handler, RestState},
+    rest::{admin_config_handler, get_by_slug_handler, health_handler, list_handler, search_handler, RestState},
 };
 
 pub struct RouterConfig {
@@ -23,6 +23,8 @@ pub struct RouterConfig {
     pub ctx_template: SchemaContext,
     pub jwt_secret: String,
     pub dev_mode: bool,
+    /// Path to frontend/dist for serving the admin UI (None = skip)
+    pub admin_ui_dir: Option<String>,
 }
 
 pub fn build_router(cfg: RouterConfig) -> Router {
@@ -58,12 +60,25 @@ pub fn build_router(cfg: RouterConfig) -> Router {
         .route("/api/auth/login", post(login_handler))
         .with_state(auth_state);
 
-    Router::new()
+    let admin_api = Router::new()
+        .route("/api/admin/config", get(admin_config_handler));
+
+    let mut router = Router::new()
         .route("/health", get(health_handler))
         .merge(auth_router)
         .merge(public_api)
+        .merge(admin_api)
         .merge(graphql_router)
         .layer(middleware::from_fn_with_state(auth_mw_state, jwt_auth_middleware))
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http());
+
+    // Serve admin UI static files at /admin/* if the dist dir is present
+    if let Some(dir) = cfg.admin_ui_dir {
+        if std::path::Path::new(&dir).exists() {
+            router = router.nest_service("/admin", ServeDir::new(dir).append_index_html_on_directories(true));
+        }
+    }
+
+    router
 }

@@ -43,6 +43,7 @@ pub trait ContentStore: Send + Sync {
 
     // Users
     async fn get_user_by_email(&self, email: &str) -> Result<User>;
+    async fn get_password_hash(&self, email: &str) -> Result<String>;
     async fn get_user(&self, id: &str) -> Result<User>;
     async fn create_user(&self, email: &str, display_name: &str, password_hash: &str, roles: Vec<String>) -> Result<User>;
     async fn update_user_roles(&self, id: &str, roles: Vec<String>) -> Result<User>;

@@ -338,6 +338,17 @@ impl ContentStore for SqliteStore {
         row_to_user(&row.0, &row.1, &row.2, row.3.as_deref(), row.4.as_deref(), &row.5, &row.6)
     }
 
+    async fn get_password_hash(&self, email: &str) -> Result<String, CmsError> {
+        let row = sqlx::query_as::<_, (String,)>(
+            "SELECT password_hash FROM _cms_users WHERE email = ?"
+        )
+        .bind(email)
+        .fetch_optional(&self.pool).await
+        .map_err(|e| CmsError::Storage(format!("get_password_hash: {e}")))?
+        .ok_or_else(|| CmsError::NotFound(format!("user:{email}")))?;
+        Ok(row.0)
+    }
+
     async fn get_user(&self, id: &str) -> Result<User, CmsError> {
         let row = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, String, String)>(
             "SELECT id, email, display_name, bio, avatar_url, roles, created_at FROM _cms_users WHERE id = ?"

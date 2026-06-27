@@ -3,6 +3,7 @@ use axum::{
     http::{header, StatusCode},
     response::{IntoResponse, Json, Response},
 };
+use cms_config::CmsConfig;
 use cms_core::{CacheLayer, CachedValue, CmsError, ContentStore, ListQuery, Pagination};
 use cms_schema::SchemaContext;
 use serde::Deserialize;
@@ -122,6 +123,41 @@ pub struct SearchParams {
     #[serde(rename = "type")]
     pub content_type: Option<String>,
     pub page: Option<u32>,
+}
+
+/// GET /api/admin/config — content type definitions for the admin UI sidebar
+pub async fn admin_config_handler(
+    Extension(ctx): Extension<SchemaContext>,
+) -> impl IntoResponse {
+    let config = ctx.config();
+    let content_types: Vec<serde_json::Value> = config
+        .content_types
+        .values()
+        .map(|ct| {
+            serde_json::json!({
+                "name": ct.name,
+                "label": ct.label,
+                "fields": ct.fields.iter().map(|f| serde_json::json!({
+                    "name": f.name,
+                    "type": format!("{:?}", f.field_type),
+                    "required": f.required,
+                    "label": f.label,
+                })).collect::<Vec<_>>(),
+                "workflow": ct.workflow,
+            })
+        })
+        .collect();
+
+    let workflows: serde_json::Value = config
+        .workflows
+        .iter()
+        .map(|(k, w)| (k.clone(), serde_json::json!({ "states": w.states })))
+        .collect();
+
+    Json(serde_json::json!({
+        "content_types": content_types,
+        "workflows": workflows,
+    }))
 }
 
 pub async fn search_handler(
