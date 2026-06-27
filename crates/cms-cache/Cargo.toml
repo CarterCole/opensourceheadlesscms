@@ -3,3 +3,10 @@ name = "cms-cache"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+moka = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

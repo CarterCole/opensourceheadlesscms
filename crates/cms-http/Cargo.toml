@@ -3,3 +3,21 @@ name = "cms-http"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+cms-config = { path = "../cms-config" }
+cms-schema = { path = "../cms-schema" }
+axum = { workspace = true }
+async-graphql = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tower = { version = "0.4" }
+tower-http = { version = "0.5", features = ["cors", "trace"] }

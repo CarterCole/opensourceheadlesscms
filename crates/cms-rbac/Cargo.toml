@@ -3,3 +3,8 @@ name = "cms-rbac"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+cms-config = { path = "../cms-config" }
+tracing = { workspace = true }

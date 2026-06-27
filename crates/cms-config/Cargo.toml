@@ -3,3 +3,15 @@ name = "cms-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+notify = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+figment = { workspace = true }
+toml = { workspace = true }

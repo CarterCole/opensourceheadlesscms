@@ -7,3 +7,21 @@ license.workspace = true
 [[bin]]
 name = "cms-server"
 path = "src/main.rs"
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+cms-config = { path = "../cms-config" }
+cms-db = { path = "../cms-db" }
+cms-cache = { path = "../cms-cache" }
+cms-rbac = { path = "../cms-rbac" }
+cms-schema = { path = "../cms-schema" }
+cms-http = { path = "../cms-http" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+
+[dependencies.arc-swap]
+version = "1"

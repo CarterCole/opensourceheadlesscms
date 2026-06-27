@@ -3,3 +3,13 @@ name = "cms-schema"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+cms-core = { path = "../cms-core" }
+cms-config = { path = "../cms-config" }
+async-graphql = { workspace = true }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
