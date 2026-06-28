@@ -5,6 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-cms-core = { path = "../cms-core" }
-cms-config = { path = "../cms-config" }
+cms-core = { path = "../cms-core", version = "0.1.0" }
+cms-config = { path = "../cms-config", version = "0.1.0" }
 tracing = { workspace = true }
