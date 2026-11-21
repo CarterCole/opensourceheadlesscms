@@ -68,7 +68,7 @@ notify = "6"
 
 # HTTP extras
 tower = { version = "0.4" }
-tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "set-header"] }
 
 # Server extras
 arc-swap = "1"
