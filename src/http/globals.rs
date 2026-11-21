@@ -155,10 +155,10 @@ where
 async fn read_all<'a>(
     ctx: &'a SchemaContext,
     defs: &[&'a GlobalConfig],
-) -> Result<Vec<ResolvedGlobal<'a>>, Response> {
+) -> Result<Vec<ResolvedGlobal<'a>>, CmsError> {
     let mut out = Vec::with_capacity(defs.len());
     for def in defs {
-        out.push(ctx.globals.read(def).await.map_err(storage_error)?);
+        out.push(ctx.globals.read(def).await?);
     }
     Ok(out)
 }
@@ -183,7 +183,7 @@ pub async fn list_globals_handler(
     let (defs, sel) = select_defs(&ctx, &params);
     let key = format!("{CACHE_PREFIX}all:json:{}:{sel}", privileged as u8);
     cached_or(&state, key, privileged, "application/json", || async {
-        let all = read_all(&ctx, &defs).await?;
+        let all = read_all(&ctx, &defs).await.map_err(storage_error)?;
         let obj: serde_json::Map<String, Value> =
             all.into_iter().map(|r| (r.def.slug(), r.value)).collect();
         Ok(Value::Object(obj).to_string())
@@ -211,7 +211,7 @@ pub async fn globals_js_handler(
     let (defs, sel) = select_defs(&ctx, &params);
     let key = format!("{CACHE_PREFIX}all:js:{}:{sel}", privileged as u8);
     cached_or(&state, key, privileged, JS_CONTENT_TYPE, || async {
-        let all = read_all(&ctx, &defs).await?;
+        let all = read_all(&ctx, &defs).await.map_err(storage_error)?;
         let entries: Vec<(&GlobalConfig, &Value)> = all.iter().map(|r| (r.def, &r.value)).collect();
         Ok(render_js_module(&entries))
     })
@@ -293,7 +293,7 @@ pub async fn admin_list_globals_handler(Extension(ctx): Extension<SchemaContext>
     let defs = readable_defs(&ctx);
     let all = match read_all(&ctx, &defs).await {
         Ok(a) => a,
-        Err(resp) => return resp,
+        Err(e) => return storage_error(e),
     };
     let default_storage = ctx.config().server.globals.storage;
     let items: Vec<Value> = all.iter().map(|r| admin_json(r, default_storage)).collect();
