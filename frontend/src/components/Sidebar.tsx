@@ -1,15 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { getAdminConfig } from '../lib/api'
+import { useAdminConfig } from '../lib/api'
 import { LayoutDashboard, FileText, Users, Loader2 } from 'lucide-react'
 
 export default function Sidebar() {
   const { pathname } = useLocation()
-  const { data: config, isLoading } = useQuery({
-    queryKey: ['admin-config'],
-    queryFn: getAdminConfig,
-    staleTime: 60_000,
-  })
+  const { config, isLoading } = useAdminConfig()
 
   const linkClass = (path: string) =>
     `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${

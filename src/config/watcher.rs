@@ -40,6 +40,12 @@ impl ConfigWatcher {
             }
         });
 
-        Ok((Self { _watcher: watcher, rx }, tx))
+        Ok((
+            Self {
+                _watcher: watcher,
+                rx,
+            },
+            tx,
+        ))
     }
 }

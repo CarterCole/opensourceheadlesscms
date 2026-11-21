@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
 import { UserCircle, ShieldCheck } from 'lucide-react'
 
@@ -15,12 +15,22 @@ interface UserListResponse {
 }
 
 export default function Users() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => apiGet<UserListResponse>('/api/admin/users'),
-  })
+  const [users, setUsers] = useState<User[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const users = data?.users ?? []
+  useEffect(() => {
+    let cancelled = false
+    apiGet<UserListResponse>('/api/admin/users')
+      .then((data) => {
+        if (!cancelled) setUsers(data.users)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div>

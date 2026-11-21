@@ -27,12 +27,10 @@ impl WorkflowConfig {
     }
 
     pub fn allowed_transitions(&self, from: &str, roles: &[String]) -> Vec<&str> {
-        self.transitions.iter()
+        self.transitions
+            .iter()
             .filter(|t| {
-                t.from == from && (
-                    t.roles.is_empty()
-                        || t.roles.iter().any(|r| roles.contains(r))
-                )
+                t.from == from && (t.roles.is_empty() || t.roles.iter().any(|r| roles.contains(r)))
             })
             .map(|t| t.to.as_str())
             .collect()
@@ -47,7 +45,8 @@ impl WorkflowConfig {
     }
 
     pub fn scheduled_transitions(&self) -> Vec<(&str, &str)> {
-        self.transitions.iter()
+        self.transitions
+            .iter()
             .filter(|t| t.trigger.is_some())
             .map(|t| (t.from.as_str(), t.to.as_str()))
             .collect()

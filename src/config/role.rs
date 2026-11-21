@@ -9,7 +9,9 @@ pub struct FieldPermission {
     pub write: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContentPermissions {
@@ -35,7 +37,8 @@ pub struct RoleConfig {
 
 impl RoleConfig {
     pub fn permissions_for(&self, content_type: &str) -> Option<&ContentPermissions> {
-        self.permissions.get(content_type)
+        self.permissions
+            .get(content_type)
             .or_else(|| self.permissions.get("*"))
     }
 }

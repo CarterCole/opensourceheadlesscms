@@ -1,5 +1,5 @@
-use async_graphql::Value;
 use crate::core::{ContentItem, FieldValue};
+use async_graphql::Value;
 use std::collections::HashMap;
 
 /// snake_case → camelCase
@@ -42,9 +42,7 @@ pub fn field_value_to_gql(fv: &FieldValue) -> Value {
                 Value::Number((*n as i64).into())
             } else {
                 Value::Number(
-                    serde_json::Number::from_f64(*n)
-                        .unwrap_or(serde_json::Number::from(0))
-                        .into(),
+                    serde_json::Number::from_f64(*n).unwrap_or(serde_json::Number::from(0)),
                 )
             }
         }
@@ -54,7 +52,9 @@ pub fn field_value_to_gql(fv: &FieldValue) -> Value {
             let json = serde_json::to_value(blocks).unwrap_or_default();
             json_to_gql(&json)
         }
-        FieldValue::Relation(ids) => Value::List(ids.iter().map(|id| Value::String(id.clone())).collect()),
+        FieldValue::Relation(ids) => {
+            Value::List(ids.iter().map(|id| Value::String(id.clone())).collect())
+        }
         FieldValue::List(items) => Value::List(items.iter().map(field_value_to_gql).collect()),
         FieldValue::Null => Value::Null,
     }
@@ -64,12 +64,14 @@ pub fn json_to_gql(json: &serde_json::Value) -> Value {
     match json {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(b) => Value::Boolean(*b),
-        serde_json::Value::Number(n) => Value::Number(n.clone().into()),
+        serde_json::Value::Number(n) => Value::Number(n.clone()),
         serde_json::Value::String(s) => Value::String(s.clone()),
         serde_json::Value::Array(arr) => Value::List(arr.iter().map(json_to_gql).collect()),
-        serde_json::Value::Object(obj) => {
-            Value::Object(obj.iter().map(|(k, v)| (async_graphql::Name::new(k), json_to_gql(v))).collect())
-        }
+        serde_json::Value::Object(obj) => Value::Object(
+            obj.iter()
+                .map(|(k, v)| (async_graphql::Name::new(k), json_to_gql(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -78,19 +80,45 @@ pub fn json_to_gql(json: &serde_json::Value) -> Value {
 pub fn content_item_to_json(item: &ContentItem, denied_fields: &[String]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     map.insert("id".to_string(), serde_json::Value::String(item.id.clone()));
-    map.insert("status".to_string(), serde_json::Value::String(item.status.clone()));
-    map.insert("version".to_string(), serde_json::Value::Number(item.version.into()));
-    map.insert("createdAt".to_string(), serde_json::Value::String(item.created_at.to_rfc3339()));
-    map.insert("updatedAt".to_string(), serde_json::Value::String(item.updated_at.to_rfc3339()));
-    map.insert("createdBy".to_string(), serde_json::Value::String(item.created_by.clone()));
+    map.insert(
+        "contentType".to_string(),
+        serde_json::Value::String(item.content_type.clone()),
+    );
+    map.insert(
+        "status".to_string(),
+        serde_json::Value::String(item.status.clone()),
+    );
+    map.insert(
+        "version".to_string(),
+        serde_json::Value::Number(item.version.into()),
+    );
+    map.insert(
+        "createdAt".to_string(),
+        serde_json::Value::String(item.created_at.to_rfc3339()),
+    );
+    map.insert(
+        "updatedAt".to_string(),
+        serde_json::Value::String(item.updated_at.to_rfc3339()),
+    );
+    map.insert(
+        "createdBy".to_string(),
+        serde_json::Value::String(item.created_by.clone()),
+    );
+    map.insert(
+        "updatedBy".to_string(),
+        serde_json::Value::String(item.updated_by.clone()),
+    );
 
+    let mut fields_map = serde_json::Map::new();
     for (field_name, field_val) in &item.fields {
         if !denied_fields.contains(field_name) {
             let gql_key = to_camel(field_name);
             let json_val = field_value_to_json(field_val);
+            fields_map.insert(gql_key.clone(), json_val.clone());
             map.insert(gql_key, json_val);
         }
     }
+    map.insert("fields".to_string(), serde_json::Value::Object(fields_map));
 
     serde_json::Value::Object(map)
 }
@@ -111,7 +139,13 @@ fn field_value_to_json(fv: &FieldValue) -> serde_json::Value {
 }
 
 /// Parse a GraphQL input Value into ContentData fields
-pub fn input_to_fields(input: &Value) -> (HashMap<String, FieldValue>, Option<String>, Option<chrono::DateTime<chrono::Utc>>) {
+pub fn input_to_fields(
+    input: &Value,
+) -> (
+    HashMap<String, FieldValue>,
+    Option<String>,
+    Option<chrono::DateTime<chrono::Utc>>,
+) {
     let mut fields = HashMap::new();
     let mut status = None;
     let mut scheduled_at = None;
@@ -121,7 +155,9 @@ pub fn input_to_fields(input: &Value) -> (HashMap<String, FieldValue>, Option<St
             let key_str = key.as_str();
             match key_str {
                 "status" => {
-                    if let Value::String(s) = val { status = Some(s.clone()); }
+                    if let Value::String(s) = val {
+                        status = Some(s.clone());
+                    }
                 }
                 "scheduledAt" => {
                     if let Value::String(s) = val {
@@ -149,5 +185,34 @@ fn gql_to_field_value(val: &Value) -> FieldValue {
         Value::List(items) => FieldValue::List(items.iter().map(gql_to_field_value).collect()),
         Value::Null => FieldValue::Null,
         other => FieldValue::Text(serde_json::to_string(other).unwrap_or_default()),
+    }
+}
+
+/// Remove fields a particular viewer may not read from an already-serialised item
+/// (the shape produced by `content_item_to_json`). Used for subscription events, which
+/// are built once by the mutating user but delivered to every subscriber.
+pub fn redact_item_json(item: &mut serde_json::Value, denied: &[String]) {
+    const RESERVED: [&str; 9] = [
+        "id",
+        "contentType",
+        "status",
+        "version",
+        "createdAt",
+        "updatedAt",
+        "createdBy",
+        "updatedBy",
+        "fields",
+    ];
+    let Some(obj) = item.as_object_mut() else {
+        return;
+    };
+    for name in denied {
+        let key = to_camel(name);
+        if !RESERVED.contains(&key.as_str()) {
+            obj.remove(&key);
+        }
+        if let Some(serde_json::Value::Object(fields)) = obj.get_mut("fields") {
+            fields.remove(&key);
+        }
     }
 }

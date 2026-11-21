@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
-  const setAuth = useAuthStore((s) => s.setAuth)
+  const setSession = useAuthStore((s) => s.setSession)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,10 +18,10 @@ export default function Login() {
     setLoading(true)
     try {
       const resp = await login(email, password)
-      setAuth(resp.access_token, resp.user_id, resp.roles)
+      setSession(resp.user_id, resp.roles)
       navigate('/', { replace: true })
-    } catch {
-      setError('Invalid email or password')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid email or password')
     } finally {
       setLoading(false)
     }

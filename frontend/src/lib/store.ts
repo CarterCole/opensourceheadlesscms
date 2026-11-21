@@ -1,25 +1,31 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+
+// The session token lives in an HttpOnly cookie that page scripts cannot read, so there
+// is nothing secret to keep here. Only who we are (for the UI) is held, in memory; on load
+// the app asks the server (GET /api/auth/me) whether the cookie is still a valid session.
+type SessionStatus = 'unknown' | 'authed' | 'anon'
 
 interface AuthState {
-  token: string | null
+  status: SessionStatus
   userId: string | null
   roles: string[]
-  setAuth: (token: string, userId: string, roles: string[]) => void
-  logout: () => void
+  setSession: (userId: string, roles: string[]) => void
+  clearSession: () => void
   isAdmin: () => boolean
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
-      token: null,
-      userId: null,
-      roles: [],
-      setAuth: (token, userId, roles) => set({ token, userId, roles }),
-      logout: () => set({ token: null, userId: null, roles: [] }),
-      isAdmin: () => get().roles.includes('admin'),
-    }),
-    { name: 'cms_auth' }
-  )
-)
+// Earlier versions kept the bearer token in localStorage; remove any leftover copy.
+try {
+  localStorage.removeItem('cms_auth')
+} catch {
+  /* storage unavailable */
+}
+
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  status: 'unknown',
+  userId: null,
+  roles: [],
+  setSession: (userId, roles) => set({ status: 'authed', userId, roles }),
+  clearSession: () => set({ status: 'anon', userId: null, roles: [] }),
+  isAdmin: () => get().roles.includes('admin'),
+}))

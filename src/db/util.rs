@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use crate::core::{CmsError, ContentItem, ContentVersion, FieldValue, MediaItem, User};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 pub fn new_id() -> String {
@@ -16,6 +16,7 @@ pub fn parse_dt(s: &str) -> Result<DateTime<Utc>, CmsError> {
         .map_err(|e| CmsError::Internal(format!("date parse error: {e}")))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn row_to_content_item(
     id: &str,
     content_type: &str,
@@ -25,6 +26,7 @@ pub fn row_to_content_item(
     created_at: &str,
     updated_at: &str,
     created_by: &str,
+    updated_by: &str,
     scheduled_at: Option<&str>,
 ) -> Result<ContentItem, CmsError> {
     let fields: HashMap<String, FieldValue> = serde_json::from_str(fields_json)
@@ -39,6 +41,7 @@ pub fn row_to_content_item(
         created_at: parse_dt(created_at)?,
         updated_at: parse_dt(updated_at)?,
         created_by: created_by.to_string(),
+        updated_by: updated_by.to_string(),
         scheduled_at: scheduled_at.map(parse_dt).transpose()?,
     })
 }
@@ -85,6 +88,7 @@ pub fn row_to_media(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn row_to_version(
     id: &str,
     content_id: &str,
@@ -107,4 +111,43 @@ pub fn row_to_version(
         created_by: created_by.to_string(),
         created_at: parse_dt(created_at)?,
     })
+}
+
+/// Turn free-form user text into a safe FTS5 `MATCH` expression.
+///
+/// FTS5 has its own query language (`AND`/`OR`/`NOT`, `NEAR(...)`, column filters, `*`,
+/// parentheses). Passing raw input would let callers run that language against the index
+/// and turns stray punctuation into 500 errors. Instead each whitespace-separated word
+/// becomes a quoted literal term (internal quotes doubled); terms are ANDed implicitly.
+/// Returns `None` when there is nothing to search for.
+pub fn fts5_query(input: &str) -> Option<String> {
+    let terms: Vec<String> = input
+        .split_whitespace()
+        .map(|w| format!("\"{}\"", w.replace('"', "\"\"")))
+        .collect();
+    if terms.is_empty() {
+        None
+    } else {
+        Some(terms.join(" "))
+    }
+}
+
+#[cfg(test)]
+mod fts_tests {
+    use super::fts5_query;
+
+    #[test]
+    fn quotes_each_term_and_neutralises_operators() {
+        assert_eq!(
+            fts5_query("hello world").as_deref(),
+            Some("\"hello\" \"world\"")
+        );
+        assert_eq!(fts5_query("a OR b").as_deref(), Some("\"a\" \"OR\" \"b\""));
+        assert_eq!(
+            fts5_query("say \"hi\"").as_deref(),
+            Some("\"say\" \"\"\"hi\"\"\"")
+        );
+        assert_eq!(fts5_query("NEAR(").as_deref(), Some("\"NEAR(\""));
+        assert_eq!(fts5_query("   "), None);
+    }
 }

@@ -1,0 +1,50 @@
+http_port = 8080
+grpc_port = 50051
+# REQUIRED: a long random value (`openssl rand -hex 32`), or set CMS_JWT_SECRET.
+# The server refuses to start in production with this placeholder; in development
+# it substitutes a random per-process secret (logins reset on restart).
+jwt_secret = "changeme-use-a-real-secret-in-production"
+env = "development"
+
+[database]
+driver = "postgres"
+# Overridden by CMS_DATABASE_URL (docker-compose builds it from the POSTGRES_* env vars)
+url = "postgres://cms:change-me@postgres:5432/cms"
+auto_migrate = true
+
+[cache]
+l1_max_capacity = 10_000
+l1_ttl_seconds = 5
+l2_enabled = false
+
+[flatfile]
+content_dir = "./content"
+git_auto_commit = true
+git_author_name = "CMS Bot"
+git_author_email = "cms@example.com"
+
+[config_dirs]
+content_types = "./content-types"
+workflows = "./workflows"
+roles = "./roles"
+
+[media]
+storage = "local"
+local_dir = "./media"
+
+[security]
+# Origins allowed to call the API cross-origin from a browser (default: none = same-origin only).
+# cors_allowed_origins = ["https://www.example.com"]
+# Session lifetime in seconds (default 8 hours). Logout revokes sessions immediately.
+# jwt_ttl_seconds = 28800
+# Set true ONLY behind a reverse proxy that overwrites X-Forwarded-For.
+# trust_proxy_headers = false
+# Failed-login lockouts within the window: per client address / per account.
+# login_max_failures = 5
+# login_account_max_failures = 20
+# login_lockout_seconds = 900
+
+[rate_limit]            # requests per second per client address (0 = unlimited)
+public_rps = 100
+graphql_rps = 30
+auth_rps = 5

@@ -1,6 +1,6 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Placeholder from '@tiptap/extension-placeholder'
+import { Placeholder } from '@tiptap/extensions'
 import { Bold, Italic, List, ListOrdered, Heading2, Code, Undo, Redo } from 'lucide-react'
 
 interface Props {
@@ -11,10 +11,13 @@ interface Props {
 export default function BlockEditor({ value, onChange }: Props) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      // v3 StarterKit bundles Link, Underline and ListKeymap; disable them to keep v2 behavior.
+      StarterKit.configure({ link: false, underline: false, listKeymap: false }),
       Placeholder.configure({ placeholder: 'Start writing…' }),
     ],
     content: value || '',
+    // v3 no longer re-renders on every transaction; the toolbar's active/disabled state needs it.
+    shouldRerenderOnTransaction: true,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML())
     },

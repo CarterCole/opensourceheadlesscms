@@ -1,6 +1,9 @@
+use crate::core::{
+    CmsError, ContentData, ContentItem, ContentStore, ContentVersion, ListQuery, MediaItem,
+    Pagination, SearchResult, User,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crate::core::{CmsError, ContentData, ContentItem, ContentStore, ContentVersion, ListQuery, MediaItem, Pagination, SearchResult, User};
 use sqlx::SqlitePool;
 use tracing::info;
 
@@ -13,9 +16,13 @@ pub struct SqliteStore {
 
 impl SqliteStore {
     pub async fn new(url: &str, migrations_dir: &str) -> Result<Self, CmsError> {
-        let pool = SqlitePool::connect(url).await
+        let pool = SqlitePool::connect(url)
+            .await
             .map_err(|e| CmsError::Storage(format!("connect: {e}")))?;
-        Ok(Self { pool, migrations_dir: migrations_dir.to_string() })
+        Ok(Self {
+            pool,
+            migrations_dir: migrations_dir.to_string(),
+        })
     }
 
     async fn snapshot_version(&self, item: &ContentItem) -> Result<(), CmsError> {
@@ -44,7 +51,9 @@ impl SqliteStore {
 
     async fn update_fts(&self, item: &ContentItem) -> Result<(), CmsError> {
         // Concatenate all text field values for FTS indexing
-        let text_blob: String = item.fields.values()
+        let text_blob: String = item
+            .fields
+            .values()
             .filter_map(|v| match v {
                 crate::core::FieldValue::Text(s) => Some(s.clone()),
                 _ => None,
@@ -71,11 +80,27 @@ impl SqliteStore {
     }
 }
 
+impl SqliteStore {
+    /// Apply any `NNN_name.sql` files in the migrations directory that haven't run yet.
+    /// sqlx records them in `_sqlx_migrations` and runs each in its own transaction.
+    async fn apply_migrations(&self) -> Result<(), CmsError> {
+        let migrator = sqlx::migrate::Migrator::new(std::path::Path::new(&self.migrations_dir))
+            .await
+            .map_err(|e| CmsError::Storage(format!("load migrations: {e}")))?;
+        migrator
+            .run(&self.pool)
+            .await
+            .map_err(|e| CmsError::Storage(format!("run migrations: {e}")))?;
+        info!("migrations applied");
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ContentStore for SqliteStore {
     async fn get(&self, content_type: &str, id: &str) -> Result<ContentItem, CmsError> {
-        let row = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(
-            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, scheduled_at
+        let row = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, String, Option<String>)>(
+            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, updated_by, scheduled_at
              FROM _cms_content WHERE id = ? AND content_type = ?"
         )
         .bind(id)
@@ -85,12 +110,23 @@ impl ContentStore for SqliteStore {
         .map_err(|e| CmsError::Storage(format!("get: {e}")))?
         .ok_or_else(|| CmsError::NotFound(format!("{content_type}/{id}")))?;
 
-        row_to_content_item(&row.0, &row.1, &row.2, &row.3, row.4, &row.5, &row.6, &row.7, row.8.as_deref())
+        row_to_content_item(
+            &row.0,
+            &row.1,
+            &row.2,
+            &row.3,
+            row.4,
+            &row.5,
+            &row.6,
+            &row.7,
+            &row.8,
+            row.9.as_deref(),
+        )
     }
 
     async fn get_by_slug(&self, content_type: &str, slug: &str) -> Result<ContentItem, CmsError> {
-        let row = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(
-            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, scheduled_at
+        let row = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, String, Option<String>)>(
+            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, updated_by, scheduled_at
              FROM _cms_content WHERE content_type = ? AND json_extract(fields, '$.slug') = ?"
         )
         .bind(content_type)
@@ -100,7 +136,18 @@ impl ContentStore for SqliteStore {
         .map_err(|e| CmsError::Storage(format!("get_by_slug: {e}")))?
         .ok_or_else(|| CmsError::NotFound(format!("{content_type}/slug:{slug}")))?;
 
-        row_to_content_item(&row.0, &row.1, &row.2, &row.3, row.4, &row.5, &row.6, &row.7, row.8.as_deref())
+        row_to_content_item(
+            &row.0,
+            &row.1,
+            &row.2,
+            &row.3,
+            row.4,
+            &row.5,
+            &row.6,
+            &row.7,
+            &row.8,
+            row.9.as_deref(),
+        )
     }
 
     async fn list(&self, content_type: &str, query: ListQuery) -> Result<SearchResult, CmsError> {
@@ -108,10 +155,11 @@ impl ContentStore for SqliteStore {
         let offset = (pagination.page.saturating_sub(1)) * pagination.per_page;
 
         let mut sql = String::from(
-            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, scheduled_at
+            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, updated_by, scheduled_at
              FROM _cms_content WHERE content_type = ?"
         );
-        let mut count_sql = String::from("SELECT COUNT(*) FROM _cms_content WHERE content_type = ?");
+        let mut count_sql =
+            String::from("SELECT COUNT(*) FROM _cms_content WHERE content_type = ?");
 
         if query.status.is_some() {
             sql.push_str(" AND status = ?");
@@ -120,10 +168,26 @@ impl ContentStore for SqliteStore {
         sql.push_str(" ORDER BY updated_at DESC LIMIT ? OFFSET ?");
 
         // Build queries dynamically
-        let mut q = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(&sql)
-            .bind(content_type);
-        let mut count_q = sqlx::query_as::<_, (i64,)>(&count_sql)
-            .bind(content_type);
+        let mut q = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                String,
+                i64,
+                String,
+                String,
+                String,
+                String,
+                Option<String>,
+            ),
+            // SAFETY (sqlx 0.9 `AssertSqlSafe`): `sql` is assembled only from constant fragments
+            // above; the content type and status are passed as bind parameters, never spliced in.
+        >(sqlx::AssertSqlSafe(sql.clone()))
+        .bind(content_type);
+        let mut count_q =
+            sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(count_sql.clone())).bind(content_type);
 
         if let Some(ref status) = query.status {
             q = q.bind(status);
@@ -132,20 +196,49 @@ impl ContentStore for SqliteStore {
 
         q = q.bind(pagination.per_page as i64).bind(offset as i64);
 
-        let rows = q.fetch_all(&self.pool).await
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("list: {e}")))?;
 
-        let total = count_q.fetch_one(&self.pool).await
-            .map_err(|e| CmsError::Storage(format!("list count: {e}")))?.0 as u64;
+        let total = count_q
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| CmsError::Storage(format!("list count: {e}")))?
+            .0 as u64;
 
-        let items = rows.iter()
-            .map(|r| row_to_content_item(&r.0, &r.1, &r.2, &r.3, r.4, &r.5, &r.6, &r.7, r.8.as_deref()))
+        let items = rows
+            .iter()
+            .map(|r| {
+                row_to_content_item(
+                    &r.0,
+                    &r.1,
+                    &r.2,
+                    &r.3,
+                    r.4,
+                    &r.5,
+                    &r.6,
+                    &r.7,
+                    &r.8,
+                    r.9.as_deref(),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(SearchResult { items, total, page: pagination.page, per_page: pagination.per_page })
+        Ok(SearchResult {
+            items,
+            total,
+            page: pagination.page,
+            per_page: pagination.per_page,
+        })
     }
 
-    async fn create(&self, content_type: &str, data: ContentData, created_by: &str) -> Result<ContentItem, CmsError> {
+    async fn create(
+        &self,
+        content_type: &str,
+        data: ContentData,
+        created_by: &str,
+    ) -> Result<ContentItem, CmsError> {
         let id = new_id();
         let now = now_str();
         let status = data.status.as_deref().unwrap_or("draft").to_string();
@@ -153,8 +246,8 @@ impl ContentStore for SqliteStore {
         let scheduled_at = data.scheduled_at.as_ref().map(|dt| dt.to_rfc3339());
 
         sqlx::query(
-            "INSERT INTO _cms_content (id, content_type, status, fields, version, created_at, updated_at, created_by, scheduled_at)
-             VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)"
+            "INSERT INTO _cms_content (id, content_type, status, fields, version, created_at, updated_at, created_by, updated_by, scheduled_at)
+             VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(content_type)
@@ -162,6 +255,7 @@ impl ContentStore for SqliteStore {
         .bind(&fields_json)
         .bind(&now)
         .bind(&now)
+        .bind(created_by)
         .bind(created_by)
         .bind(scheduled_at.as_deref())
         .execute(&self.pool)
@@ -174,18 +268,31 @@ impl ContentStore for SqliteStore {
         Ok(item)
     }
 
-    async fn update(&self, content_type: &str, id: &str, data: ContentData, updated_by: &str) -> Result<ContentItem, CmsError> {
+    async fn update(
+        &self,
+        content_type: &str,
+        id: &str,
+        data: ContentData,
+        updated_by: &str,
+    ) -> Result<ContentItem, CmsError> {
         let existing = self.get(content_type, id).await?;
         self.snapshot_version(&existing).await?;
 
         let now = now_str();
         let fields_json = serde_json::to_string(&data.fields)?;
-        let status = data.status.as_deref().unwrap_or(&existing.status).to_string();
-        let scheduled_at = data.scheduled_at.as_ref().map(|dt| dt.to_rfc3339())
+        let status = data
+            .status
+            .as_deref()
+            .unwrap_or(&existing.status)
+            .to_string();
+        let scheduled_at = data
+            .scheduled_at
+            .as_ref()
+            .map(|dt| dt.to_rfc3339())
             .or_else(|| existing.scheduled_at.map(|dt| dt.to_rfc3339()));
 
         sqlx::query(
-            "UPDATE _cms_content SET fields = ?, status = ?, updated_at = ?, created_by = ?, scheduled_at = ?, version = version + 1
+            "UPDATE _cms_content SET fields = ?, status = ?, updated_at = ?, updated_by = ?, scheduled_at = ?, version = version + 1
              WHERE id = ? AND content_type = ?"
         )
         .bind(&fields_json)
@@ -206,22 +313,32 @@ impl ContentStore for SqliteStore {
 
     async fn delete(&self, content_type: &str, id: &str) -> Result<(), CmsError> {
         sqlx::query("DELETE FROM _cms_content WHERE id = ? AND content_type = ?")
-            .bind(id).bind(content_type)
-            .execute(&self.pool).await
+            .bind(id)
+            .bind(content_type)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("delete: {e}")))?;
         sqlx::query("DELETE FROM _cms_search_fts WHERE id = ?")
-            .bind(id).execute(&self.pool).await
+            .bind(id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("fts delete: {e}")))?;
         Ok(())
     }
 
-    async fn transition(&self, content_type: &str, id: &str, to_state: &str, by_user: &str) -> Result<ContentItem, CmsError> {
+    async fn transition(
+        &self,
+        content_type: &str,
+        id: &str,
+        to_state: &str,
+        by_user: &str,
+    ) -> Result<ContentItem, CmsError> {
         let existing = self.get(content_type, id).await?;
         self.snapshot_version(&existing).await?;
 
         let now = now_str();
         sqlx::query(
-            "UPDATE _cms_content SET status = ?, updated_at = ?, created_by = ?, version = version + 1
+            "UPDATE _cms_content SET status = ?, updated_at = ?, updated_by = ?, version = version + 1
              WHERE id = ? AND content_type = ?"
         )
         .bind(to_state).bind(&now).bind(by_user).bind(id).bind(content_type)
@@ -231,7 +348,11 @@ impl ContentStore for SqliteStore {
         self.get(content_type, id).await
     }
 
-    async fn list_versions(&self, content_type: &str, id: &str) -> Result<Vec<ContentVersion>, CmsError> {
+    async fn list_versions(
+        &self,
+        content_type: &str,
+        id: &str,
+    ) -> Result<Vec<ContentVersion>, CmsError> {
         let rows = sqlx::query_as::<_, (String, String, String, i64, String, String, String, String)>(
             "SELECT id, content_id, content_type, version, fields, status, created_by, created_at
              FROM _cms_content_versions WHERE content_id = ? AND content_type = ?
@@ -246,25 +367,38 @@ impl ContentStore for SqliteStore {
             .collect()
     }
 
-    async fn restore_version(&self, content_type: &str, id: &str, version: u32, by_user: &str) -> Result<ContentItem, CmsError> {
+    async fn restore_version(
+        &self,
+        content_type: &str,
+        id: &str,
+        version: u32,
+        by_user: &str,
+    ) -> Result<ContentItem, CmsError> {
         let v = sqlx::query_as::<_, (String, String)>(
             "SELECT fields, status FROM _cms_content_versions
-             WHERE content_id = ? AND content_type = ? AND version = ?"
+             WHERE content_id = ? AND content_type = ? AND version = ?",
         )
-        .bind(id).bind(content_type).bind(version as i64)
-        .fetch_optional(&self.pool).await
+        .bind(id)
+        .bind(content_type)
+        .bind(version as i64)
+        .fetch_optional(&self.pool)
+        .await
         .map_err(|e| CmsError::Storage(format!("restore_version fetch: {e}")))?
         .ok_or_else(|| CmsError::NotFound(format!("version {version} for {content_type}/{id}")))?;
 
         let fields = serde_json::from_str(&v.0)?;
-        let data = ContentData { fields, status: Some(v.1), scheduled_at: None };
+        let data = ContentData {
+            fields,
+            status: Some(v.1),
+            scheduled_at: None,
+        };
         self.update(content_type, id, data, by_user).await
     }
 
     async fn list_scheduled_due(&self, as_of: DateTime<Utc>) -> Result<Vec<ContentItem>, CmsError> {
         let as_of_str = as_of.to_rfc3339();
-        let rows = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(
-            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, scheduled_at
+        let rows = sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, String, Option<String>)>(
+            "SELECT id, content_type, status, fields, version, created_at, updated_at, created_by, updated_by, scheduled_at
              FROM _cms_content WHERE status = 'approved' AND scheduled_at IS NOT NULL AND scheduled_at <= ?"
         )
         .bind(&as_of_str)
@@ -272,16 +406,45 @@ impl ContentStore for SqliteStore {
         .map_err(|e| CmsError::Storage(format!("list_scheduled_due: {e}")))?;
 
         rows.iter()
-            .map(|r| row_to_content_item(&r.0, &r.1, &r.2, &r.3, r.4, &r.5, &r.6, &r.7, r.8.as_deref()))
+            .map(|r| {
+                row_to_content_item(
+                    &r.0,
+                    &r.1,
+                    &r.2,
+                    &r.3,
+                    r.4,
+                    &r.5,
+                    &r.6,
+                    &r.7,
+                    &r.8,
+                    r.9.as_deref(),
+                )
+            })
             .collect()
     }
 
-    async fn search(&self, content_type: Option<&str>, query: &str, pagination: Pagination) -> Result<SearchResult, CmsError> {
+    async fn search(
+        &self,
+        content_type: Option<&str>,
+        query: &str,
+        pagination: Pagination,
+    ) -> Result<SearchResult, CmsError> {
         let offset = (pagination.page.saturating_sub(1)) * pagination.per_page;
+
+        // Never hand raw user text to FTS5's query parser.
+        let Some(fts_query) = fts5_query(query) else {
+            return Ok(SearchResult {
+                items: vec![],
+                total: 0,
+                page: pagination.page,
+                per_page: pagination.per_page,
+            });
+        };
+        let query = fts_query.as_str();
 
         let (sql, count_sql, type_bind) = if let Some(ct) = content_type {
             (
-                "SELECT c.id, c.content_type, c.status, c.fields, c.version, c.created_at, c.updated_at, c.created_by, c.scheduled_at
+                "SELECT c.id, c.content_type, c.status, c.fields, c.version, c.created_at, c.updated_at, c.created_by, c.updated_by, c.scheduled_at
                  FROM _cms_search_fts fts JOIN _cms_content c ON fts.id = c.id
                  WHERE fts.content_type = ? AND fts.text_blob MATCH ? ORDER BY rank LIMIT ? OFFSET ?",
                 "SELECT COUNT(*) FROM _cms_search_fts WHERE content_type = ? AND text_blob MATCH ?",
@@ -289,7 +452,7 @@ impl ContentStore for SqliteStore {
             )
         } else {
             (
-                "SELECT c.id, c.content_type, c.status, c.fields, c.version, c.created_at, c.updated_at, c.created_by, c.scheduled_at
+                "SELECT c.id, c.content_type, c.status, c.fields, c.version, c.created_at, c.updated_at, c.created_by, c.updated_by, c.scheduled_at
                  FROM _cms_search_fts fts JOIN _cms_content c ON fts.id = c.id
                  WHERE fts.text_blob MATCH ? ORDER BY rank LIMIT ? OFFSET ?",
                 "SELECT COUNT(*) FROM _cms_search_fts WHERE text_blob MATCH ?",
@@ -299,13 +462,48 @@ impl ContentStore for SqliteStore {
 
         // Type-specific search
         let rows = if let Some(ref ct) = type_bind {
-            sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(sql)
-                .bind(ct).bind(query).bind(pagination.per_page as i64).bind(offset as i64)
-                .fetch_all(&self.pool).await
+            sqlx::query_as::<
+                _,
+                (
+                    String,
+                    String,
+                    String,
+                    String,
+                    i64,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                ),
+            >(sql)
+            .bind(ct)
+            .bind(query)
+            .bind(pagination.per_page as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await
         } else {
-            sqlx::query_as::<_, (String, String, String, String, i64, String, String, String, Option<String>)>(sql)
-                .bind(query).bind(pagination.per_page as i64).bind(offset as i64)
-                .fetch_all(&self.pool).await
+            sqlx::query_as::<
+                _,
+                (
+                    String,
+                    String,
+                    String,
+                    String,
+                    i64,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                ),
+            >(sql)
+            .bind(query)
+            .bind(pagination.per_page as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await
         }
         .map_err(|e| CmsError::Storage(format!("search: {e}")))?;
 
@@ -314,14 +512,35 @@ impl ContentStore for SqliteStore {
         } else {
             sqlx::query_as::<_, (i64,)>(count_sql).bind(query)
         }
-        .fetch_one(&self.pool).await
-        .map_err(|e| CmsError::Storage(format!("search count: {e}")))?.0 as u64;
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| CmsError::Storage(format!("search count: {e}")))?
+        .0 as u64;
 
-        let items = rows.iter()
-            .map(|r| row_to_content_item(&r.0, &r.1, &r.2, &r.3, r.4, &r.5, &r.6, &r.7, r.8.as_deref()))
+        let items = rows
+            .iter()
+            .map(|r| {
+                row_to_content_item(
+                    &r.0,
+                    &r.1,
+                    &r.2,
+                    &r.3,
+                    r.4,
+                    &r.5,
+                    &r.6,
+                    &r.7,
+                    &r.8,
+                    r.9.as_deref(),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(SearchResult { items, total, page: pagination.page, per_page: pagination.per_page })
+        Ok(SearchResult {
+            items,
+            total,
+            page: pagination.page,
+            per_page: pagination.per_page,
+        })
     }
 
     // --- Users ---
@@ -335,17 +554,25 @@ impl ContentStore for SqliteStore {
         .map_err(|e| CmsError::Storage(format!("get_user_by_email: {e}")))?
         .ok_or_else(|| CmsError::NotFound(format!("user:{email}")))?;
 
-        row_to_user(&row.0, &row.1, &row.2, row.3.as_deref(), row.4.as_deref(), &row.5, &row.6)
+        row_to_user(
+            &row.0,
+            &row.1,
+            &row.2,
+            row.3.as_deref(),
+            row.4.as_deref(),
+            &row.5,
+            &row.6,
+        )
     }
 
     async fn get_password_hash(&self, email: &str) -> Result<String, CmsError> {
-        let row = sqlx::query_as::<_, (String,)>(
-            "SELECT password_hash FROM _cms_users WHERE email = ?"
-        )
-        .bind(email)
-        .fetch_optional(&self.pool).await
-        .map_err(|e| CmsError::Storage(format!("get_password_hash: {e}")))?
-        .ok_or_else(|| CmsError::NotFound(format!("user:{email}")))?;
+        let row =
+            sqlx::query_as::<_, (String,)>("SELECT password_hash FROM _cms_users WHERE email = ?")
+                .bind(email)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| CmsError::Storage(format!("get_password_hash: {e}")))?
+                .ok_or_else(|| CmsError::NotFound(format!("user:{email}")))?;
         Ok(row.0)
     }
 
@@ -358,10 +585,24 @@ impl ContentStore for SqliteStore {
         .map_err(|e| CmsError::Storage(format!("get_user: {e}")))?
         .ok_or_else(|| CmsError::NotFound(format!("user:{id}")))?;
 
-        row_to_user(&row.0, &row.1, &row.2, row.3.as_deref(), row.4.as_deref(), &row.5, &row.6)
+        row_to_user(
+            &row.0,
+            &row.1,
+            &row.2,
+            row.3.as_deref(),
+            row.4.as_deref(),
+            &row.5,
+            &row.6,
+        )
     }
 
-    async fn create_user(&self, email: &str, display_name: &str, password_hash: &str, roles: Vec<String>) -> Result<User, CmsError> {
+    async fn create_user(
+        &self,
+        email: &str,
+        display_name: &str,
+        password_hash: &str,
+        roles: Vec<String>,
+    ) -> Result<User, CmsError> {
         let id = new_id();
         let now = now_str();
         let roles_json = serde_json::to_string(&roles)?;
@@ -379,8 +620,10 @@ impl ContentStore for SqliteStore {
     async fn update_user_roles(&self, id: &str, roles: Vec<String>) -> Result<User, CmsError> {
         let roles_json = serde_json::to_string(&roles)?;
         sqlx::query("UPDATE _cms_users SET roles = ? WHERE id = ?")
-            .bind(&roles_json).bind(id)
-            .execute(&self.pool).await
+            .bind(&roles_json)
+            .bind(id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("update_user_roles: {e}")))?;
         self.get_user(id).await
     }
@@ -400,15 +643,24 @@ impl ContentStore for SqliteStore {
     }
 
     async fn delete_user(&self, id: &str) -> Result<(), CmsError> {
-        sqlx::query("DELETE FROM _cms_users WHERE id = ?").bind(id)
-            .execute(&self.pool).await
+        sqlx::query("DELETE FROM _cms_users WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("delete_user: {e}")))?;
         Ok(())
     }
 
     // --- API Tokens ---
 
-    async fn create_api_token(&self, name: &str, user_id: &str, token_hash: &str, scopes: Vec<String>, expires_at: Option<DateTime<Utc>>) -> Result<String, CmsError> {
+    async fn create_api_token(
+        &self,
+        name: &str,
+        user_id: &str,
+        token_hash: &str,
+        scopes: Vec<String>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<String, CmsError> {
         let id = new_id();
         let now = now_str();
         let scopes_json = serde_json::to_string(&scopes)?;
@@ -424,14 +676,19 @@ impl ContentStore for SqliteStore {
         Ok(id)
     }
 
-    async fn get_user_by_token_hash(&self, token_hash: &str) -> Result<(User, Vec<String>), CmsError> {
+    async fn get_user_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<(User, Vec<String>), CmsError> {
         let now = now_str();
         let row = sqlx::query_as::<_, (String, String)>(
             "SELECT user_id, scopes FROM _cms_api_tokens
-             WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > ?)"
+             WHERE token_hash = ? AND (expires_at IS NULL OR expires_at > ?)",
         )
-        .bind(token_hash).bind(&now)
-        .fetch_optional(&self.pool).await
+        .bind(token_hash)
+        .bind(&now)
+        .fetch_optional(&self.pool)
+        .await
         .map_err(|e| CmsError::Storage(format!("get_user_by_token_hash: {e}")))?
         .ok_or(CmsError::Unauthorized)?;
 
@@ -441,8 +698,10 @@ impl ContentStore for SqliteStore {
     }
 
     async fn revoke_api_token(&self, id: &str) -> Result<(), CmsError> {
-        sqlx::query("DELETE FROM _cms_api_tokens WHERE id = ?").bind(id)
-            .execute(&self.pool).await
+        sqlx::query("DELETE FROM _cms_api_tokens WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("revoke_api_token: {e}")))?;
         Ok(())
     }
@@ -450,15 +709,24 @@ impl ContentStore for SqliteStore {
     async fn touch_api_token(&self, token_hash: &str) -> Result<(), CmsError> {
         let now = now_str();
         sqlx::query("UPDATE _cms_api_tokens SET last_used = ? WHERE token_hash = ?")
-            .bind(&now).bind(token_hash)
-            .execute(&self.pool).await
+            .bind(&now)
+            .bind(token_hash)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("touch_api_token: {e}")))?;
         Ok(())
     }
 
     // --- Media ---
 
-    async fn create_media(&self, filename: &str, content_type: &str, size: i64, url: &str, uploaded_by: &str) -> Result<MediaItem, CmsError> {
+    async fn create_media(
+        &self,
+        filename: &str,
+        content_type: &str,
+        size: i64,
+        url: &str,
+        uploaded_by: &str,
+    ) -> Result<MediaItem, CmsError> {
         let id = new_id();
         let now = now_str();
 
@@ -499,8 +767,10 @@ impl ContentStore for SqliteStore {
     }
 
     async fn delete_media(&self, id: &str) -> Result<(), CmsError> {
-        sqlx::query("DELETE FROM _cms_media WHERE id = ?").bind(id)
-            .execute(&self.pool).await
+        sqlx::query("DELETE FROM _cms_media WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
             .map_err(|e| CmsError::Storage(format!("delete_media: {e}")))?;
         Ok(())
     }
@@ -508,14 +778,29 @@ impl ContentStore for SqliteStore {
     // --- Migrations ---
 
     async fn run_migrations(&self) -> Result<(), CmsError> {
-        let migration_sql = std::fs::read_to_string(
-            format!("{}/001_base.sql", self.migrations_dir)
-        ).map_err(|e| CmsError::Storage(format!("read migration: {e}")))?;
+        self.apply_migrations().await
+    }
 
-        sqlx::raw_sql(&migration_sql).execute(&self.pool).await
-            .map_err(|e| CmsError::Storage(format!("run migration: {e}")))?;
+    async fn get_auth_state(&self, id: &str) -> Result<(Vec<String>, i64), CmsError> {
+        let row = sqlx::query_as::<_, (String, i64)>(
+            "SELECT roles, session_epoch FROM _cms_users WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| CmsError::Storage(format!("get_auth_state: {e}")))?
+        .ok_or_else(|| CmsError::NotFound(format!("user:{id}")))?;
+        let roles: Vec<String> = serde_json::from_str(&row.0)
+            .map_err(|e| CmsError::Storage(format!("roles deserialize: {e}")))?;
+        Ok((roles, row.1))
+    }
 
-        info!("migrations applied");
+    async fn bump_session_epoch(&self, id: &str) -> Result<(), CmsError> {
+        sqlx::query("UPDATE _cms_users SET session_epoch = session_epoch + 1 WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| CmsError::Storage(format!("bump_session_epoch: {e}")))?;
         Ok(())
     }
 }

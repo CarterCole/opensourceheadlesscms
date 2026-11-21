@@ -1,15 +1,24 @@
-import { useQuery } from '@tanstack/react-query'
+import { Suspense } from 'react'
 import { Link } from 'react-router-dom'
-import { getAdminConfig } from '../lib/api'
-import { listContent } from '../lib/queries'
+import { graphql, useLazyLoadQuery } from 'react-relay'
+import { useAdminConfig } from '../lib/api'
 import StatusBadge from '../components/StatusBadge'
-import { Plus, FileText } from 'lucide-react'
+import { Plus, FileText, Loader2 } from 'lucide-react'
+import type { DashboardRecentContentQuery as DashboardRecentContentQueryType } from './__generated__/DashboardRecentContentQuery.graphql'
 
-function ContentTypeCard({ typeName, label }: { typeName: string; label: string }) {
-  const { data: recent = [] } = useQuery({
-    queryKey: ['content', typeName, 'recent'],
-    queryFn: () => listContent(typeName, undefined, 1, 5),
-  })
+const RecentContentQuery = graphql`
+  query DashboardRecentContentQuery($type: String!) {
+    contentList(type: $type, page: 1, perPage: 5) {
+      id
+      status
+      fields
+    }
+  }
+`
+
+function ContentTypeCardInner({ typeName, label }: { typeName: string; label: string }) {
+  const data = useLazyLoadQuery<DashboardRecentContentQueryType>(RecentContentQuery, { type: typeName })
+  const recent = data.contentList
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -31,17 +40,20 @@ function ContentTypeCard({ typeName, label }: { typeName: string; label: string 
         <p className="text-sm text-gray-400">No content yet.</p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {recent.map((item) => (
-            <li key={item.id} className="flex items-center justify-between py-2">
-              <Link
-                to={`/content/${typeName}/${item.id}/edit`}
-                className="truncate text-sm text-gray-700 hover:text-brand-700"
-              >
-                {String(item.title ?? item.id)}
-              </Link>
-              <StatusBadge status={item.status} />
-            </li>
-          ))}
+          {recent.map((item) => {
+            const fields = (item.fields ?? {}) as Record<string, unknown>
+            return (
+              <li key={item.id} className="flex items-center justify-between py-2">
+                <Link
+                  to={`/content/${typeName}/${item.id}/edit`}
+                  className="truncate text-sm text-gray-700 hover:text-brand-700"
+                >
+                  {String(fields.title ?? item.id)}
+                </Link>
+                <StatusBadge status={item.status} />
+              </li>
+            )
+          })}
         </ul>
       )}
 
@@ -55,11 +67,23 @@ function ContentTypeCard({ typeName, label }: { typeName: string; label: string 
   )
 }
 
+function ContentTypeCard(props: { typeName: string; label: string }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-5 text-gray-400 shadow-sm">
+          <Loader2 className="animate-spin" size={14} />
+          Loading…
+        </div>
+      }
+    >
+      <ContentTypeCardInner {...props} />
+    </Suspense>
+  )
+}
+
 export default function Dashboard() {
-  const { data: config, isLoading } = useQuery({
-    queryKey: ['admin-config'],
-    queryFn: getAdminConfig,
-  })
+  const { config, isLoading } = useAdminConfig()
 
   return (
     <div>
@@ -72,7 +96,7 @@ export default function Dashboard() {
         <div className="text-sm text-gray-400">Loading content types…</div>
       )}
 
-      {config?.content_types.length === 0 && (
+      {config && config.content_types.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center">
           <p className="text-gray-500">No content types configured yet.</p>
           <p className="mt-1 text-sm text-gray-400">

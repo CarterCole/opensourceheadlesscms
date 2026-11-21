@@ -1,5 +1,5 @@
 use crate::config::CmsConfig;
-use crate::core::{AllowedFields, CacheLayer, ContentStore, PermissionEngine};
+use crate::core::{AllowedFields, CacheLayer, ContentStore, EventBus, PermissionEngine};
 use std::sync::Arc;
 
 /// Per-request context passed into all GraphQL resolvers
@@ -9,6 +9,7 @@ pub struct SchemaContext {
     pub cache: Arc<dyn CacheLayer>,
     pub rbac: Arc<dyn PermissionEngine>,
     pub config: Arc<CmsConfig>,
+    pub events: Arc<EventBus>,
     pub user_id: Option<String>,
     pub user_roles: Vec<String>,
 }
@@ -19,12 +20,14 @@ impl SchemaContext {
         cache: Arc<dyn CacheLayer>,
         rbac: Arc<dyn PermissionEngine>,
         config: Arc<CmsConfig>,
+        events: Arc<EventBus>,
     ) -> Self {
         Self {
             store,
             cache,
             rbac,
             config,
+            events,
             user_id: None,
             user_roles: vec![],
         }
@@ -41,7 +44,8 @@ impl SchemaContext {
     }
 
     pub fn allowed_fields(&self, content_type: &str, action: crate::core::Action) -> AllowedFields {
-        self.rbac.allowed_fields(&self.user_roles, content_type, action)
+        self.rbac
+            .allowed_fields(&self.user_roles, content_type, action)
     }
 
     pub fn can(&self, action: crate::core::Action, content_type: &str) -> bool {

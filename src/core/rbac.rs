@@ -26,6 +26,13 @@ impl AllowedFields {
 
 pub trait PermissionEngine: Send + Sync {
     fn can(&self, roles: &[String], action: Action, content_type: &str) -> bool;
-    fn allowed_fields(&self, roles: &[String], content_type: &str, action: Action) -> AllowedFields;
-    fn can_transition(&self, roles: &[String], content_type: &str, from_state: &str, to_state: &str) -> bool;
+    fn allowed_fields(&self, roles: &[String], content_type: &str, action: Action)
+        -> AllowedFields;
+    fn can_transition(
+        &self,
+        roles: &[String],
+        content_type: &str,
+        from_state: &str,
+        to_state: &str,
+    ) -> bool;
 }

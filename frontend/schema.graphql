@@ -1,0 +1,67 @@
+type ContentEvent {
+	contentType: String!
+	id: ID!
+	mutationType: MutationType!
+	item: ContentItem
+}
+
+type ContentItem {
+	id: ID!
+	contentType: String!
+	status: String!
+	version: Int!
+	createdAt: DateTime!
+	updatedAt: DateTime!
+	createdBy: String!
+	updatedBy: String!
+	fields: JSON!
+}
+
+scalar DateTime
+
+scalar JSON
+
+type Mutation {
+	createContent(type: String!, input: JSON!): ContentItem!
+	updateContent(type: String!, id: ID!, input: JSON!): ContentItem!
+	transitionContent(type: String!, id: ID!, toState: String!): ContentItem!
+	deleteContent(type: String!, id: ID!): Boolean!
+}
+
+enum MutationType {
+	CREATED
+	UPDATED
+	DELETED
+	TRANSITIONED
+}
+
+type Query {
+	content(type: String!, id: ID, slug: String): ContentItem
+	contentList(type: String!, status: String, page: Int, perPage: Int): [ContentItem!]!
+	search(query: String!, contentType: String, page: Int): [SearchResult!]!
+}
+
+type SearchResult {
+	id: ID!
+	contentType: String!
+	status: String!
+}
+
+type Subscription {
+	contentChanged(type: String!, id: ID): ContentEvent!
+}
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+schema {
+	query: Query
+	mutation: Mutation
+	subscription: Subscription
+}
+

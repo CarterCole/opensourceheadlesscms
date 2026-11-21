@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::core::{CacheLayer, CachedValue};
+use async_trait::async_trait;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,7 +40,9 @@ impl CacheLayer for MokaCache {
     }
 
     async fn invalidate_prefix(&self, prefix: &str) {
-        let keys: Vec<String> = self.inner.iter()
+        let keys: Vec<String> = self
+            .inner
+            .iter()
             .map(|(k, _)| k.as_ref().clone())
             .filter(|k| k.starts_with(prefix))
             .collect();
@@ -88,3 +90,6 @@ pub fn cache_key_id(content_type: &str, id: &str) -> String {
 pub fn cache_key_slug(content_type: &str, slug: &str) -> String {
     format!("{content_type}:slug:{slug}")
 }
+
+#[cfg(test)]
+mod tests;

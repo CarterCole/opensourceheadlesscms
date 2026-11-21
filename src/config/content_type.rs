@@ -1,18 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageBackend {
+    #[default]
     Database,
     Flatfile,
 }
 
-impl Default for StorageBackend {
-    fn default() -> Self { Self::Database }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
     Text,
@@ -22,18 +19,9 @@ pub enum FieldType {
     Bool,
     Date,
     Image,
-    Relation {
-        target: String,
-        #[serde(default = "default_cardinality")]
-        cardinality: String,
-    },
-    #[serde(rename = "list")]
-    List {
-        of: Box<FieldType>,
-    },
+    Relation,
+    List,
 }
-
-fn default_cardinality() -> String { "one".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FieldAccess {
@@ -53,9 +41,17 @@ pub struct FieldConfig {
     #[serde(default)]
     pub list: bool,
     pub source: Option<String>,
+    // relation fields
+    pub target: Option<String>,
+    #[serde(default = "default_cardinality")]
+    pub cardinality: String,
     pub access: Option<FieldAccess>,
     pub default: Option<serde_json::Value>,
     pub label: Option<String>,
+}
+
+fn default_cardinality() -> String {
+    "one".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +77,8 @@ impl ContentTypeConfig {
     }
 
     pub fn restricted_fields(&self) -> HashMap<String, &FieldAccess> {
-        self.fields.iter()
+        self.fields
+            .iter()
             .filter_map(|f| f.access.as_ref().map(|a| (f.name.clone(), a)))
             .collect()
     }

@@ -1,11 +1,10 @@
-[server]
 http_port = 8080
 grpc_port = 50051
+# REQUIRED: a long random value (`openssl rand -hex 32`), or set CMS_JWT_SECRET.
+# The server refuses to start in production with this placeholder; in development
+# it substitutes a random per-process secret (logins reset on restart).
 jwt_secret = "changeme-use-a-real-secret-in-production"
-env = "development"     # "production" disables GraphQL playground
-
-[storage]
-backend = "database"    # "database" | "flatfile"
+env = "development"     # "production" (the default) disables the GraphQL playground and requires a real jwt_secret
 
 [database]
 driver = "sqlite"       # "sqlite" | "postgres" | "d1"
@@ -47,3 +46,20 @@ storage = "local"       # "local" | "s3" | "r2"
 local_dir = "./media"
 # s3_bucket = "my-bucket"
 # s3_region = "us-east-1"
+
+[security]
+# Origins allowed to call the API cross-origin from a browser (default: none = same-origin only).
+# cors_allowed_origins = ["https://www.example.com"]
+# Session lifetime in seconds (default 8 hours). Logout revokes sessions immediately.
+# jwt_ttl_seconds = 28800
+# Set true ONLY behind a reverse proxy that overwrites X-Forwarded-For.
+# trust_proxy_headers = false
+# Failed-login lockouts within the window: per client address / per account.
+# login_max_failures = 5
+# login_account_max_failures = 20
+# login_lockout_seconds = 900
+
+[rate_limit]            # requests per second per client address (0 = unlimited)
+public_rps = 100
+graphql_rps = 30
+auth_rps = 5

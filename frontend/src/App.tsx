@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './lib/store'
+import { restoreSession } from './lib/api'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -8,8 +10,12 @@ import ContentEditor from './pages/ContentEditor'
 import Users from './pages/Users'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token)
-  if (!token) return <Navigate to="/login" replace />
+  const status = useAuthStore((s) => s.status)
+  useEffect(() => {
+    if (status === 'unknown') void restoreSession()
+  }, [status])
+  if (status === 'unknown') return null // checking the session cookie with the server
+  if (status === 'anon') return <Navigate to="/login" replace />
   return <>{children}</>
 }
 

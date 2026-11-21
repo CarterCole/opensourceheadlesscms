@@ -1,7 +1,7 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock is committed: this crate ships a binary and the image builds with --locked.
 
 # Node / frontend / sdk
 node_modules/
@@ -19,10 +19,11 @@ dist/
 *.db-shm
 *.db-wal
 
-# Editor
+# Editor / tooling
 .idea/
 .vscode/
 *.swp
+.claude/
 
 # OS
 .DS_Store
@@ -32,3 +33,6 @@ Thumbs.db
 cms.toml
 logs/
 content/
+
+# TypeScript build cache
+*.tsbuildinfo

@@ -6,6 +6,11 @@ version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 repository = "https://github.com/CarterCole/opensourceheadlesscms"
+description = "A headless CMS server in Rust: REST + GraphQL APIs, SQLite/PostgreSQL storage, RBAC, flat-file content, and a React admin UI."
+readme = "README.md"
+keywords = ["cms", "headless", "graphql", "rest", "axum"]
+categories = ["web-programming", "web-programming::http-server"]
+exclude = ["frontend/", "sdk/", "proto/", "tests/", "content/", ".github/", "demo.sh"]
 
 [[bin]]
 name = "cms-server"
@@ -21,14 +26,19 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 
 # Web
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
 
 # GraphQL
 async-graphql = { version = "7", features = ["chrono", "uuid"] }
 async-graphql-axum = "7"
+async-stream = "0.3"
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate", "uuid", "chrono", "json"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "postgres", "migrate", "uuid", "chrono", "json"] }
+
+# OpenAPI
+utoipa = { version = "6", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "10", features = ["axum"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -58,8 +68,14 @@ notify = "6"
 
 # HTTP extras
 tower = { version = "0.4" }
-tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"] }
 
 # Server extras
 arc-swap = "1"
 rand_core = { version = "0.6", features = ["getrandom"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
+tempfile = "3"
+tower = { version = "0.4", features = ["util"] }
+pretty_assertions = "1"

@@ -10,7 +10,10 @@ pub enum ConfigError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("yaml parse error in {file}: {source}")]
-    Yaml { file: String, source: serde_yaml::Error },
+    Yaml {
+        file: String,
+        source: serde_yaml::Error,
+    },
     #[error("toml parse error: {0}")]
     Toml(String),
     #[error("missing required config: {0}")]
@@ -49,28 +52,40 @@ pub struct ConfigLoader {
 
 impl ConfigLoader {
     pub fn new(config_path: impl Into<String>) -> Self {
-        Self { config_path: config_path.into() }
+        Self {
+            config_path: config_path.into(),
+        }
     }
 
     pub fn load(&self) -> Result<CmsConfig, ConfigError> {
         let server = self.load_server_config()?;
 
         let content_types = load_yaml_dir::<ContentTypeConfig>(&server.config_dirs.content_types)?
-            .into_iter().map(|ct| (ct.name.clone(), ct)).collect();
+            .into_iter()
+            .map(|ct| (ct.name.clone(), ct))
+            .collect();
 
         let workflows = load_yaml_dir::<WorkflowConfig>(&server.config_dirs.workflows)?
-            .into_iter().map(|wf| (wf.name.clone(), wf)).collect();
+            .into_iter()
+            .map(|wf| (wf.name.clone(), wf))
+            .collect();
 
         let roles = load_yaml_dir::<RoleConfig>(&server.config_dirs.roles)?
-            .into_iter().map(|r| (r.name.clone(), r)).collect();
+            .into_iter()
+            .map(|r| (r.name.clone(), r))
+            .collect();
 
-        Ok(CmsConfig { server, content_types, workflows, roles })
+        Ok(CmsConfig {
+            server,
+            content_types,
+            workflows,
+            roles,
+        })
     }
 
     fn load_server_config(&self) -> Result<ServerConfig, ConfigError> {
         let content = std::fs::read_to_string(&self.config_path)?;
-        toml::from_str::<ServerConfig>(&content)
-            .map_err(|e| ConfigError::Toml(e.to_string()))
+        toml::from_str::<ServerConfig>(&content).map_err(|e| ConfigError::Toml(e.to_string()))
     }
 }
 

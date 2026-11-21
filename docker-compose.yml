@@ -3,8 +3,9 @@ services:
   cms:
     build: .
     ports:
-      - "8080:8080"
-      - "50051:50051"
+      # Loopback only by default; put a TLS-terminating reverse proxy in front for
+      # anything public. Set CMS_BIND=0.0.0.0 to expose directly.
+      - "${CMS_BIND:-127.0.0.1}:8080:8080"
     environment:
       CMS_CONFIG_PATH: /app/cms.toml
       RUST_LOG: cms=info,tower_http=debug
@@ -31,13 +32,16 @@ services:
       redis:
         condition: service_started
     ports:
-      - "8080:8080"
-      - "50051:50051"
+      # Loopback only by default; put a TLS-terminating reverse proxy in front for
+      # anything public. Set CMS_BIND=0.0.0.0 to expose directly.
+      - "${CMS_BIND:-127.0.0.1}:8080:8080"
     environment:
       CMS_CONFIG_PATH: /app/cms.toml
       RUST_LOG: cms=info,tower_http=debug
+      CMS_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET, e.g. openssl rand -hex 32}
+      CMS_DATABASE_URL: postgres://${POSTGRES_USER:-cms}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cms}
     volumes:
-      - ./cms.example.toml:/app/cms.toml:ro
+      - ./cms.postgres.toml:/app/cms.toml:ro
       - ./content-types:/app/content-types:ro
       - ./workflows:/app/workflows:ro
       - ./roles:/app/roles:ro
@@ -47,15 +51,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: cms
-      POSTGRES_USER: cms
-      POSTGRES_PASSWORD: cms
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-cms}
+      POSTGRES_USER: ${POSTGRES_USER:-cms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cms"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-cms}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,8 +65,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     profiles: ["postgres"]
 
 volumes:

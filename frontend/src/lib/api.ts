@@ -1,56 +1,75 @@
-import { GraphQLClient } from 'graphql-request'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from './store'
 
 export const API_BASE = ''
 
-export function getGqlClient() {
-  const token = useAuthStore.getState().token
-  return new GraphQLClient('/graphql', {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+function sessionExpired(): never {
+  useAuthStore.getState().clearSession()
+  window.location.href = '/login'
+  throw new Error('Unauthorized')
 }
 
+// Authentication is the HttpOnly session cookie, sent automatically on same-origin requests.
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const token = useAuthStore.getState().token
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (res.status === 401) {
-    useAuthStore.getState().logout()
-    window.location.href = '/login'
-    throw new Error('Unauthorized')
-  }
+  if (res.status === 401) sessionExpired()
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const token = useAuthStore.getState().token
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
-  if (res.status === 401) {
-    useAuthStore.getState().logout()
-    window.location.href = '/login'
-    throw new Error('Unauthorized')
-  }
+  const res = await fetch(`${API_BASE}${path}`, { credentials: 'same-origin' })
+  if (res.status === 401) sessionExpired()
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
 
 export interface LoginResponse {
-  access_token: string
+  access_token: string // also set as an HttpOnly cookie; the UI does not keep it
   user_id: string
   roles: string[]
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  return apiPost<LoginResponse>('/api/auth/login', { email, password })
+  // Not apiPost: a 401 here means "wrong password", not "session expired".
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  if (res.status === 429) throw new Error('Too many attempts. Try again later.')
+  if (!res.ok) throw new Error('Invalid email or password')
+  return res.json()
+}
+
+/** Ask the server whether the session cookie is valid; fills the auth store either way. */
+export async function restoreSession(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'same-origin' })
+    if (res.ok) {
+      const me = (await res.json()) as { user_id: string; roles: string[] }
+      useAuthStore.getState().setSession(me.user_id, me.roles)
+      return
+    }
+  } catch {
+    /* network error: treat as signed out */
+  }
+  useAuthStore.getState().clearSession()
+}
+
+/** Revoke the session on the server (invalidates the token everywhere), then clear local state. */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'same-origin' })
+  } finally {
+    useAuthStore.getState().clearSession()
+  }
 }
 
 export interface ContentTypeField {
@@ -74,4 +93,29 @@ export interface AdminConfig {
 
 export async function getAdminConfig(): Promise<AdminConfig> {
   return apiGet<AdminConfig>('/api/admin/config')
+}
+
+/// Static per-request-session config shared across the sidebar/dashboard/editor -
+/// fetched once and cached at module scope since it rarely changes.
+let adminConfigPromise: Promise<AdminConfig> | null = null
+
+export function useAdminConfig(): { config: AdminConfig | null; isLoading: boolean } {
+  const [config, setConfig] = useState<AdminConfig | null>(null)
+  const [isLoading, setIsLoading] = useState(!config)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!adminConfigPromise) adminConfigPromise = getAdminConfig()
+    adminConfigPromise.then((c) => {
+      if (!cancelled) {
+        setConfig(c)
+        setIsLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return { config, isLoading }
 }

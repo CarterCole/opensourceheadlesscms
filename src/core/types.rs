@@ -11,7 +11,11 @@ pub struct ContentItem {
     pub version: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Original author; never changes after creation.
     pub created_by: String,
+    /// Last editor (updated by edits and workflow transitions).
+    #[serde(default)]
+    pub updated_by: String,
     pub scheduled_at: Option<DateTime<Utc>>,
 }
 
@@ -100,7 +104,10 @@ pub struct Pagination {
 
 impl Default for Pagination {
     fn default() -> Self {
-        Self { page: 1, per_page: 20 }
+        Self {
+            page: 1,
+            per_page: 20,
+        }
     }
 }
 
