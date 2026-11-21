@@ -15,28 +15,53 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check the tag matches Cargo.toml
+        id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Re-tagging a version that is already published (e.g. to rebuild the image)
+      # skips this step instead of failing the whole release.
+      - name: Check whether this version is already on crates.io
+        id: published
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -A "opensourceheadlesscms-release (https://github.com/${{ github.repository }})" \
+            "https://crates.io/api/v1/crates/opensourceheadlesscms/${{ steps.version.outputs.version }}")
+          echo "exists=$([ "$code" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          [ "$code" = 200 ] && echo "::notice::${{ steps.version.outputs.version }} is already published; skipping cargo publish"
+          true
+
       - name: Install Rust
+        if: steps.published.outputs.exists != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler
-
-      - uses: rust-lang/crates-io-auth-action@v1
-        id: auth
+        if: steps.published.outputs.exists != 'true'
 
       - name: Publish
-        run: cargo publish
+        if: steps.published.outputs.exists != 'true'
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::repository secret CARGO_REGISTRY_TOKEN is not set"
+            exit 1
+          fi
+          cargo publish
 
   docker:
     name: Publish Docker image
+    # Only ship an image for a version whose crate is published.
+    needs: crates
     runs-on: ubuntu-latest
     permissions:
       contents: read
