@@ -56,6 +56,18 @@ The defaults are tuned for local development. Before exposing an instance:
   the epoch (invalidating every token the user holds); deleting a user or changing their
   roles takes effect on the next request. Token lifetime is `security.jwt_ttl_seconds`
   (default 8 hours).
+- **Single sign-on (optional):** with an `[oidc]` section the login page also offers
+  "Sign in with Kith" (any OpenID Connect provider works). The flow is authorization code
+  with PKCE; `state`, `nonce` and the PKCE verifier sit in a short-lived signed `HttpOnly`
+  cookie, so a callback only completes in the browser that started it. The ID token must be
+  RS256, signed by a key in the issuer's JWKS, with the configured `iss`, `aud` and `nonce`
+  (and `acr` when `min_aal` is set); an `iss` response parameter that names another provider
+  is refused (RFC 9207). The user is found by a **verified** email only. Without
+  `auto_create` there is no account creation: an unknown email is refused. Accounts made by
+  SSO have no usable password. Treat the provider as fully trusted for identity: whoever it
+  says owns an address can sign in as that account, and with `role_map` it also decides roles
+  (a sign-in that maps to no role gets `default_roles`, so mind that when an administrator
+  signs in through it). The end result is the same session cookie and epoch as a password login.
 - **Brute-force protection:** per-address token-bucket rate limits (`[rate_limit]`:
   `public_rps`, `graphql_rps`, `auth_rps`; 0 disables a class) plus login lockouts —
   5 failed logins per address and 20 per account within 15 minutes (`security.login_*`).

@@ -24,6 +24,9 @@ pub struct ServerConfig {
     pub media: MediaConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    /// "Sign in with Kith" (or any OpenID Connect provider) for the admin UI. Absent = off.
+    #[serde(default)]
+    pub oidc: Option<OidcConfig>,
 }
 
 fn default_http_port() -> u16 {
@@ -236,4 +239,131 @@ fn default_media_storage() -> String {
 }
 fn default_media_dir() -> String {
     "./media".to_string()
+}
+
+/// OpenID Connect single sign-on, tested against a Kith hub (`kith hub serve`) but standard:
+/// authorization code flow with PKCE, ID tokens signed with RS256.
+///
+/// The provider must have this server registered as a client whose redirect URI is
+/// [`OidcConfig::redirect_uri`]. A successful sign-in ends in the same session cookie as
+/// the password login, so everything downstream (roles, GraphQL, logout) is unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OidcConfig {
+    /// The provider's issuer URL, e.g. `https://id.example.com`. Discovery is read from
+    /// `{issuer}/.well-known/openid-configuration`. Must be `https` (loopback `http` is
+    /// allowed for development).
+    pub issuer: String,
+    pub client_id: String,
+    /// Omit for a public client (PKCE is always used). Also settable with
+    /// `CMS_OIDC_CLIENT_SECRET`.
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    /// Label on the login button.
+    #[serde(default = "default_oidc_name")]
+    pub name: String,
+    /// Public base URL of this server, e.g. `https://cms.example.com`. The redirect URI
+    /// registered with the provider is `{public_url}/api/auth/oidc/callback`.
+    #[serde(default)]
+    pub public_url: Option<String>,
+    /// Full redirect URI, if it differs from the one derived from `public_url`.
+    #[serde(default)]
+    pub redirect_uri: Option<String>,
+    #[serde(default = "default_oidc_scopes")]
+    pub scopes: Vec<String>,
+    /// Minimum assurance level (1 to 3). Sent as `acr_values` and checked on the ID token's
+    /// `acr` (`urn:kith:acr:aalN`). With 2, a passkey sign-in with a TOTP step-up is needed
+    /// where the identity only has weaker factors.
+    #[serde(default)]
+    pub min_aal: Option<u8>,
+    /// Create a CMS account for a verified email that has none. Off by default: only
+    /// people who already have an account can sign in.
+    #[serde(default)]
+    pub auto_create: bool,
+    /// Roles for an account created by sign-in (and for a mapped sign-in that maps to nothing).
+    #[serde(default)]
+    pub default_roles: Vec<String>,
+    /// Provider role or group name -> CMS role. When non-empty the provider is the source
+    /// of truth: a user's CMS roles are replaced by the mapped ones on every sign-in. Needs
+    /// the `groups` scope (the default scopes include it).
+    #[serde(default)]
+    pub role_map: std::collections::BTreeMap<String, String>,
+    /// Where the browser goes after signing in.
+    #[serde(default = "default_oidc_post_login")]
+    pub post_login_url: String,
+}
+
+fn default_oidc_name() -> String {
+    "Kith".to_string()
+}
+fn default_oidc_scopes() -> Vec<String> {
+    ["openid", "email", "profile", "groups"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+fn default_oidc_post_login() -> String {
+    "/admin/".to_string()
+}
+
+fn is_secure_or_loopback(u: &url::Url) -> bool {
+    match u.scheme() {
+        "https" => true,
+        "http" => match u.host() {
+            Some(url::Host::Domain(d)) => d == "localhost",
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            None => false,
+        },
+        _ => false,
+    }
+}
+
+impl OidcConfig {
+    /// The redirect URI to register with the provider.
+    pub fn redirect_uri(&self) -> Option<String> {
+        self.redirect_uri.clone().or_else(|| {
+            self.public_url
+                .as_deref()
+                .map(|u| format!("{}/api/auth/oidc/callback", u.trim_end_matches('/')))
+        })
+    }
+
+    /// Refuse a configuration that could not work, or that would be unsafe, at startup.
+    pub fn validate(&self) -> Result<(), String> {
+        let issuer = url::Url::parse(&self.issuer).map_err(|e| format!("oidc.issuer: {e}"))?;
+        if !is_secure_or_loopback(&issuer)
+            || issuer.query().is_some()
+            || issuer.fragment().is_some()
+        {
+            return Err(
+                "oidc.issuer must be an https URL (http only for localhost) \
+                        with no query or fragment"
+                    .into(),
+            );
+        }
+        if self.client_id.trim().is_empty() {
+            return Err("oidc.client_id is required".into());
+        }
+        let redirect = self
+            .redirect_uri()
+            .ok_or("oidc: set public_url (or redirect_uri)")?;
+        let redirect = url::Url::parse(&redirect).map_err(|e| format!("oidc.redirect_uri: {e}"))?;
+        if !is_secure_or_loopback(&redirect) {
+            return Err("oidc redirect URI must be https (http only for localhost)".into());
+        }
+        if !self.scopes.iter().any(|s| s == "openid") {
+            return Err("oidc.scopes must include \"openid\"".into());
+        }
+        if let Some(n) = self.min_aal {
+            if !(1..=3).contains(&n) {
+                return Err("oidc.min_aal must be 1, 2 or 3".into());
+            }
+        }
+        if !self.post_login_url.starts_with('/') || self.post_login_url.starts_with("//") {
+            return Err(
+                "oidc.post_login_url must be a path on this server, like \"/admin/\"".into(),
+            );
+        }
+        Ok(())
+    }
 }

@@ -122,7 +122,7 @@ pub async fn authenticate_token(
     Some((claims.sub, roles))
 }
 
-fn session_cookie(token: &str, max_age: i64, secure: bool) -> HeaderValue {
+pub(crate) fn session_cookie(token: &str, max_age: i64, secure: bool) -> HeaderValue {
     let mut value =
         format!("{SESSION_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age}");
     if secure {

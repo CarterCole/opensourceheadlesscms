@@ -59,6 +59,21 @@ local_dir = "./media"
 # login_account_max_failures = 20
 # login_lockout_seconds = 900
 
+# "Sign in with Kith" / any OpenID Connect provider (authorization code + PKCE, RS256 ID tokens).
+# Register {public_url}/api/auth/oidc/callback as a redirect URI on the provider.
+# [oidc]
+# issuer = "https://id.example.com"
+# client_id = "cms"
+# # client_secret = "..."        # or CMS_OIDC_CLIENT_SECRET; omit for a public client
+# name = "Kith"                  # login button label
+# public_url = "https://cms.example.com"
+# scopes = ["openid", "email", "profile", "groups"]
+# # min_aal = 2                  # Kith: require urn:kith:acr:aal2 or better
+# # auto_create = false          # create an account for a verified email that has none
+# # default_roles = ["editor"]   # for created accounts, and when role_map maps to nothing
+# # role_map = { "cms-admins" = "admin" }   # makes the provider the source of roles
+# # post_login_url = "/admin/"
+
 [rate_limit]            # requests per second per client address (0 = unlimited)
 public_rps = 100
 graphql_rps = 30

@@ -565,6 +565,31 @@ impl ContentStore for SqliteStore {
         )
     }
 
+    async fn get_user_by_email_ci(&self, email: &str) -> Result<User, CmsError> {
+        let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, String, String)>(
+            "SELECT id, email, display_name, bio, avatar_url, roles, created_at FROM _cms_users WHERE lower(email) = lower(?) LIMIT 2"
+        )
+        .bind(email)
+        .fetch_all(&self.pool).await
+        .map_err(|e| CmsError::Storage(format!("get_user_by_email_ci: {e}")))?;
+
+        match rows.as_slice() {
+            [] => Err(CmsError::NotFound(format!("user:{email}"))),
+            [row] => row_to_user(
+                &row.0,
+                &row.1,
+                &row.2,
+                row.3.as_deref(),
+                row.4.as_deref(),
+                &row.5,
+                &row.6,
+            ),
+            _ => Err(CmsError::Validation(format!(
+                "several accounts match {email} ignoring case"
+            ))),
+        }
+    }
+
     async fn get_password_hash(&self, email: &str) -> Result<String, CmsError> {
         let row =
             sqlx::query_as::<_, (String,)>("SELECT password_hash FROM _cms_users WHERE email = ?")

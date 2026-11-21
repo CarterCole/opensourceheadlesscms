@@ -92,7 +92,17 @@ async fn main() -> anyhow::Result<()> {
     if let Ok(url) = std::env::var("CMS_DATABASE_URL") {
         config.server.database.url = Some(url);
     }
+    if let Ok(secret) = std::env::var("CMS_OIDC_CLIENT_SECRET") {
+        if let Some(oidc) = config.server.oidc.as_mut() {
+            oidc.client_secret = Some(secret);
+        }
+    }
     resolve_jwt_secret(&mut config.server)?;
+    if let Some(oidc) = &config.server.oidc {
+        oidc.validate()
+            .map_err(|e| anyhow::anyhow!("invalid [oidc] config: {e}"))?;
+        info!("oidc sign-in enabled ({})", oidc.issuer);
+    }
 
     info!(
         "loaded: {} content types, {} roles",
@@ -202,6 +212,7 @@ async fn main() -> anyhow::Result<()> {
         admin_ui_dir: Some(admin_ui_dir),
         security: config.server.security.clone(),
         rate_limit: config.server.rate_limit.clone(),
+        oidc: config.server.oidc.clone(),
     });
 
     let addr = format!("0.0.0.0:{}", config.server.http_port);

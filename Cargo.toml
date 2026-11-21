@@ -73,6 +73,10 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs", "set-header"]
 # Server extras
 arc-swap = "1"
 rand_core = { version = "0.6", features = ["getrandom"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+base64 = "0.22"
+sha2 = "0.11"
+url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }

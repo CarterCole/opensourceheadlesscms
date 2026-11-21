@@ -66,6 +66,7 @@ async fn build_test_app() -> (axum::Router, String) {
             rate_limit: RateLimitConfig::default(),
             media: MediaConfig::default(),
             security: Default::default(),
+            oidc: None,
         },
         content_types: HashMap::new(),
         workflows: HashMap::new(),
@@ -90,6 +91,7 @@ async fn build_test_app() -> (axum::Router, String) {
         admin_ui_dir: None,
         security: Default::default(),
         rate_limit: Default::default(),
+        oidc: None,
     });
 
     (router, password.to_string())

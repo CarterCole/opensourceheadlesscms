@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod graphql;
 pub mod middleware;
+pub mod oidc;
 pub mod openapi;
 pub mod ratelimit;
 pub mod rest;

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login } from '../lib/api'
+import { login, ssoConfig, type SsoConfig } from '../lib/api'
 import { useAuthStore } from '../lib/store'
 import { Loader2 } from 'lucide-react'
 
@@ -11,6 +11,11 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sso, setSso] = useState<SsoConfig>({ enabled: false })
+
+  useEffect(() => {
+    void ssoConfig().then(setSso)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,6 +79,23 @@ export default function Login() {
               Sign in
             </button>
           </form>
+
+          {sso.enabled && (
+            <>
+              <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
+                <span className="h-px flex-1 bg-gray-200" />
+                or
+                <span className="h-px flex-1 bg-gray-200" />
+              </div>
+              {/* A full-page navigation: the provider redirects back to the server, which sets the session cookie. */}
+              <a
+                href="/api/auth/oidc/login"
+                className="flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Sign in with {sso.name ?? 'SSO'}
+              </a>
+            </>
+          )}
         </div>
       </div>
     </div>

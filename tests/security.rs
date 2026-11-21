@@ -127,6 +127,7 @@ fn config() -> CmsConfig {
             rate_limit: RateLimitConfig::default(),
             media: MediaConfig::default(),
             security: Default::default(),
+            oidc: None,
         },
         content_types: HashMap::from([("article".to_string(), article)]),
         workflows: HashMap::from([("editorial".to_string(), workflow)]),
@@ -185,6 +186,7 @@ async fn app_with(security: SecurityConfig, rate_limit: RateLimitConfig) -> App 
         admin_ui_dir: None,
         security,
         rate_limit,
+        oidc: None,
     });
     App { router, store }
 }

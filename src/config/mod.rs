@@ -10,7 +10,7 @@ pub use loader::{CmsConfig, ConfigLoader};
 pub use role::{ContentPermissions, FieldPermission, RoleConfig};
 pub use server::{
     CacheConfig, ConfigDirs, DatabaseConfig, DatabaseDriver, FlatfileConfig, MediaConfig,
-    RateLimitConfig, SecurityConfig, ServerConfig, WebhookConfig,
+    OidcConfig, RateLimitConfig, SecurityConfig, ServerConfig, WebhookConfig,
 };
 pub use watcher::ConfigWatcher;
 pub use workflow::{Transition, WorkflowConfig};

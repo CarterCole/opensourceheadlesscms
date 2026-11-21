@@ -1,4 +1,4 @@
-use crate::config::{RateLimitConfig, SecurityConfig};
+use crate::config::{OidcConfig, RateLimitConfig, SecurityConfig};
 use crate::core::{CacheLayer, ContentStore};
 use crate::schema::SchemaContext;
 use async_graphql::dynamic::Schema;
@@ -24,6 +24,7 @@ use crate::http::{
     auth::{login_handler, logout_handler, me_handler, AuthState},
     graphql::{graphql_handler, graphql_playground_handler},
     middleware::{jwt_auth_middleware, AuthMiddlewareState},
+    oidc::{self, OidcClient, OidcState},
     openapi::ApiDoc,
     ratelimit::{rate_limit_middleware, LoginThrottle, RateLimitState},
     rest::{
@@ -44,6 +45,8 @@ pub struct RouterConfig {
     pub admin_ui_dir: Option<String>,
     pub security: SecurityConfig,
     pub rate_limit: RateLimitConfig,
+    /// "Sign in with Kith" / OpenID Connect login (None = off).
+    pub oidc: Option<OidcConfig>,
 }
 
 /// Cross-origin policy. Empty list = same-origin only (no CORS headers at all).
@@ -127,6 +130,21 @@ pub fn build_router(cfg: RouterConfig) -> Router {
         .route("/api/auth/me", get(me_handler))
         .with_state(auth_state);
 
+    let oidc_client = cfg.oidc.clone().and_then(|c| match OidcClient::new(c) {
+        Ok(client) => Some(Arc::new(client)),
+        Err(e) => {
+            tracing::error!("oidc disabled: {e}");
+            None
+        }
+    });
+    let oidc_router = oidc::router(OidcState {
+        client: oidc_client,
+        store: cfg.store.clone(),
+        jwt_secret: cfg.jwt_secret.clone(),
+        jwt_ttl_seconds: cfg.security.jwt_ttl_seconds,
+        cookie_secure,
+    });
+
     let admin_api = Router::new().route("/api/admin/config", get(admin_config_handler));
 
     let swagger = SwaggerUi::new("/api/docs").url("/api/openapi.json", ApiDoc::openapi());
@@ -136,6 +154,7 @@ pub fn build_router(cfg: RouterConfig) -> Router {
         .route("/health", get(health_handler))
         .merge(swagger)
         .merge(auth_router)
+        .merge(oidc_router)
         .merge(public_api)
         .merge(admin_api)
         .merge(graphql_router)

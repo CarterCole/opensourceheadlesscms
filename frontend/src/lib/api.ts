@@ -48,6 +48,22 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return res.json()
 }
 
+export interface SsoConfig {
+  enabled: boolean
+  name?: string
+}
+
+/** Whether "Sign in with …" (OpenID Connect, e.g. Kith) is configured on the server. */
+export async function ssoConfig(): Promise<SsoConfig> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/oidc/config`, { credentials: 'same-origin' })
+    if (res.ok) return (await res.json()) as SsoConfig
+  } catch {
+    /* network error: no SSO button */
+  }
+  return { enabled: false }
+}
+
 /** Ask the server whether the session cookie is valid; fills the auth store either way. */
 export async function restoreSession(): Promise<void> {
   try {

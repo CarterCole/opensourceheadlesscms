@@ -73,6 +73,9 @@ pub trait ContentStore: Send + Sync {
 
     // Users
     async fn get_user_by_email(&self, email: &str) -> Result<User>;
+    /// Like `get_user_by_email` but ignoring case, for sign-in providers that normalise
+    /// addresses. `Validation` error if two accounts differ only by case.
+    async fn get_user_by_email_ci(&self, email: &str) -> Result<User>;
     async fn get_password_hash(&self, email: &str) -> Result<String>;
     async fn get_user(&self, id: &str) -> Result<User>;
     async fn create_user(

@@ -195,6 +195,7 @@ mod tests {
                 rate_limit: RateLimitConfig::default(),
                 media: MediaConfig::default(),
                 security: Default::default(),
+                oidc: None,
             },
             content_types: HashMap::new(),
             workflows: HashMap::new(),

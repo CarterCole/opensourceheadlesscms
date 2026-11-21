@@ -83,6 +83,29 @@ Read [SECURITY.md](SECURITY.md) before exposing an instance. In short: set a lon
 
 The admin UI authenticates with an `HttpOnly` session cookie (no token in page JavaScript); API clients use `Authorization: Bearer <token>` from `POST /api/auth/login`. Logout (`POST /api/auth/logout`) revokes the session server-side.
 
+### Single sign-on ("Sign in with Kith")
+
+The admin login page can also sign people in through an OpenID Connect provider such as a
+[Kith](https://github.com/CarterCole/kith) hub (passkey login, `acr`-based step-up, groups and
+roles). Register this server on the provider as a client, then add to `cms.toml`:
+
+```toml
+[oidc]
+issuer = "https://id.example.com"          # discovery: {issuer}/.well-known/openid-configuration
+client_id = "cms"                          # a public client (PKCE) unless you set CMS_OIDC_CLIENT_SECRET
+public_url = "https://cms.example.com"     # redirect URI = {public_url}/api/auth/oidc/callback
+# min_aal = 2                              # require a second factor (Kith: urn:kith:acr:aal2)
+# auto_create = true                       # make an account for a verified email that has none
+# default_roles = ["editor"]
+# role_map = { "cms-admins" = "admin" }    # provider role/group -> CMS role, applied every sign-in
+```
+
+For a Kith hub, `clients.json` needs `{"client_id": "cms", "name": "CMS", "redirect_uris":
+["https://cms.example.com/api/auth/oidc/callback"]}` (omit `client_secret` for a public client).
+Users are matched by their **verified email**; see [SECURITY.md](SECURITY.md#authentication-model)
+for what that trusts. The sign-in ends in the same session cookie as the password login, which
+keeps working.
+
 ## Configuration
 
 Server config lives in a TOML file (`cms.example.toml` / `cms.postgres.toml`), pointed to via `CMS_CONFIG_PATH`. Content types, workflows, and roles are defined under `content-types/`, `workflows/`, and `roles/` respectively.
