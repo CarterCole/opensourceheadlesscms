@@ -19,6 +19,20 @@ type ContentItem {
 
 scalar DateTime
 
+type Global {
+	slug: String!
+	name: String!
+	label: String!
+	kind: String!
+	item: String!
+	storage: String!
+	description: String
+	public: Boolean!
+	value: JSON
+	updatedAt: DateTime
+	updatedBy: String
+}
+
 scalar JSON
 
 type Mutation {
@@ -26,6 +40,7 @@ type Mutation {
 	updateContent(type: String!, id: ID!, input: JSON!): ContentItem!
 	transitionContent(type: String!, id: ID!, toState: String!): ContentItem!
 	deleteContent(type: String!, id: ID!): Boolean!
+	setGlobal(slug: String, name: String, value: JSON!): Global!
 }
 
 enum MutationType {
@@ -39,12 +54,41 @@ type Query {
 	content(type: String!, id: ID, slug: String): ContentItem
 	contentList(type: String!, status: String, page: Int, perPage: Int): [ContentItem!]!
 	search(query: String!, contentType: String, page: Int): [SearchResult!]!
+	globals(slugs: [String], names: [String]): [Global!]!
+	global(slug: String, name: String): Global
+	"""
+	Site-wide globals, one field per global (camelCase of its slug)
+	"""
+	site: Site!
 }
 
 type SearchResult {
 	id: ID!
 	contentType: String!
 	status: String!
+}
+
+type Site {
+	"""
+	Announcement banner (`announcements`)
+	"""
+	announcements: [String!]
+	"""
+	Site keywords (`keywords`)
+	"""
+	keywords: [String!]
+	"""
+	Links in the site header, in display order. (`primary-nav`)
+	"""
+	primaryNav: JSON
+	"""
+	Site name (`site-name`)
+	"""
+	siteName: String
+	"""
+	Theme tokens (`theme`)
+	"""
+	theme: JSON
 }
 
 type Subscription {

@@ -67,10 +67,12 @@ async fn build_test_app() -> (axum::Router, String) {
             media: MediaConfig::default(),
             security: Default::default(),
             oidc: None,
+            globals: Default::default(),
         },
         content_types: HashMap::new(),
         workflows: HashMap::new(),
         roles: HashMap::new(),
+        globals: HashMap::new(),
     });
 
     let rbac: Arc<dyn opensourceheadlesscms::core::PermissionEngine> =

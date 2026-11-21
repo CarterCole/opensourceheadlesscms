@@ -1,0 +1,5 @@
+# Ordered list of strings (editors choose the order).
+name: announcements
+label: Announcement banner
+kind: list
+max_items: 5

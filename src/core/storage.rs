@@ -5,7 +5,8 @@ use std::collections::HashMap;
 
 use crate::core::error::Result;
 use crate::core::types::{
-    ContentItem, ContentVersion, FieldValue, MediaItem, Pagination, SearchResult, User,
+    ContentItem, ContentVersion, FieldValue, MediaItem, Pagination, SearchResult, StoredGlobal,
+    User,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -119,6 +120,10 @@ pub trait ContentStore: Send + Sync {
     async fn get_media(&self, id: &str) -> Result<MediaItem>;
     async fn list_media(&self, pagination: Pagination) -> Result<Vec<MediaItem>>;
     async fn delete_media(&self, id: &str) -> Result<()>;
+
+    // Globals (used by the `database` globals backend)
+    async fn get_global(&self, name: &str) -> Result<Option<StoredGlobal>>;
+    async fn put_global(&self, name: &str, value: &StoredGlobal) -> Result<()>;
 
     // Migrations
     async fn run_migrations(&self) -> Result<()>;

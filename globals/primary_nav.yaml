@@ -1,0 +1,10 @@
+# Ordered map of link labels to URLs. GET /api/v1/globals/primary-nav
+name: primary_nav
+slug: primary-nav          # optional; defaults to the name with _ → -
+label: Primary navigation
+description: Links in the site header, in display order.
+kind: map
+item: url
+default:
+  Home: /
+  Blog: /blog

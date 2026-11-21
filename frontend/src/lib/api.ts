@@ -22,6 +22,27 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return res.json()
 }
 
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (res.status === 401) sessionExpired()
+  if (!res.ok) {
+    const text = await res.text()
+    let msg = text || `${res.status} ${res.statusText}`
+    try {
+      msg = (JSON.parse(text) as { error?: string }).error ?? msg
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { credentials: 'same-origin' })
   if (res.status === 401) sessionExpired()
@@ -105,6 +126,33 @@ export interface ContentTypeDef {
 export interface AdminConfig {
   content_types: ContentTypeDef[]
   workflows: Record<string, { states: string[] }>
+  globals: { slug: string; label: string }[]
+}
+
+export type GlobalKind = 'single' | 'list' | 'set' | 'map'
+export type GlobalItem = 'text' | 'url' | 'json'
+
+export interface GlobalDef {
+  slug: string
+  name: string
+  label: string
+  description: string | null
+  kind: GlobalKind
+  item: GlobalItem
+  public: boolean
+  storage: 'database' | 'flatfile' | 'redis'
+  max_items: number | null
+  value: unknown
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export async function getGlobals(): Promise<{ globals: GlobalDef[]; can_edit: boolean }> {
+  return apiGet('/api/admin/globals')
+}
+
+export async function saveGlobal(slug: string, value: unknown): Promise<GlobalDef> {
+  return apiPut(`/api/admin/globals/${encodeURIComponent(slug)}`, { value })
 }
 
 export async function getAdminConfig(): Promise<AdminConfig> {

@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAdminConfig } from '../lib/api'
-import { LayoutDashboard, FileText, Users, Loader2 } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, Loader2, SlidersHorizontal } from 'lucide-react'
 
 export default function Sidebar() {
   const { pathname } = useLocation()
@@ -45,6 +45,20 @@ export default function Sidebar() {
               >
                 <FileText size={16} />
                 {ct.label || ct.name}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {config && config.globals?.length > 0 && (
+          <div className="pt-3">
+            <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Site
+            </p>
+            {config.globals.map((g) => (
+              <Link key={g.slug} to={`/globals/${g.slug}`} className={linkClass(`/globals/${g.slug}`)}>
+                <SlidersHorizontal size={16} />
+                {g.label}
               </Link>
             ))}
           </div>

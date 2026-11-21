@@ -1,0 +1,4 @@
+# Set: unordered and unique; stored de-duplicated and sorted.
+name: keywords
+label: Site keywords
+kind: set

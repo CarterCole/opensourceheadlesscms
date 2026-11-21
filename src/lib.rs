@@ -2,6 +2,7 @@ pub mod cache;
 pub mod config;
 pub mod core;
 pub mod db;
+pub mod globals;
 pub mod http;
 pub mod rbac;
 pub mod schema;

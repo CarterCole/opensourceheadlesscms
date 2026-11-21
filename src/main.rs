@@ -97,6 +97,9 @@ async fn main() -> anyhow::Result<()> {
             oidc.client_secret = Some(secret);
         }
     }
+    if let Ok(url) = std::env::var("CMS_GLOBALS_REDIS_URL") {
+        config.server.globals.redis_url = Some(url);
+    }
     resolve_jwt_secret(&mut config.server)?;
     if let Some(oidc) = &config.server.oidc {
         oidc.validate()
@@ -105,8 +108,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!(
-        "loaded: {} content types, {} roles",
+        "loaded: {} content types, {} globals, {} roles",
         config.content_types.len(),
+        config.globals.len(),
         config.roles.len()
     );
 
@@ -161,13 +165,18 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(RbacEngine::new(&config));
     let events = Arc::new(opensourceheadlesscms::core::EventBus::new());
 
+    let globals =
+        opensourceheadlesscms::globals::GlobalsService::from_config(&config, store.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("globals storage: {e}"))?;
     let ctx_template = SchemaContext::new(
         store.clone(),
         cache.clone(),
         rbac.clone(),
         Arc::new(config.clone()),
         events.clone(),
-    );
+    )
+    .with_globals(Arc::new(globals));
 
     let schema =
         build_schema(&config, ctx_template.clone()).map_err(|e| anyhow::anyhow!("schema: {e}"))?;

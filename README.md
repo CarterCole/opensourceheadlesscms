@@ -106,9 +106,79 @@ Users are matched by their **verified email**; see [SECURITY.md](SECURITY.md#aut
 for what that trusts. The sign-in ends in the same session cookie as the password login, which
 keeps working.
 
+## Globals (site-wide settings)
+
+Globals are named site-wide values that aren't posts: a site title, an announcement list, a
+keyword set, a map of nav labels to URLs, a map of theme names to JSON objects. Each one is a
+YAML file in `globals/` (`[config_dirs] globals`):
+
+```yaml
+name: primary_nav           # lowercase letters, digits, _
+slug: primary-nav           # optional; URL-safe, defaults to name with _ → -
+label: Primary navigation
+kind: map                   # single | list (ordered) | set (unique, stored sorted) | map (ordered label → item)
+item: url                   # text (default) | url | json
+public: true                # false = only signed-in readers of `globals`
+storage: flatfile           # optional override of [globals] storage
+max_items: 50               # list/set/map cap (default 500)
+default: { Home: /, Blog: /blog }
+```
+
+`url` items must be `http(s)://`, `mailto:`, `tel:`, or a site path (`/about`, `#top`).
+`json` items can be any JSON value except `null`.
+
+**Reading** (public, CDN-cacheable):
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/v1/globals` | `{ "<slug>": value, … }` for every readable global |
+| `GET /api/v1/globals?slugs=site-name,primary-nav&names=theme` | the same, for just those (by slug and/or name) |
+| `GET /api/v1/globals/<slug>` | `{ slug, name, kind, item, value, updated_at }` |
+| `GET /api/v1/globals.js` | ES module: `export const primaryNav = {…};` per global, plus `export default { "primary-nav": … }` |
+| `GET /api/v1/globals/<slug>.js` | ES module for that one global (`globals.js?slugs=…` for several) |
+
+The `.js` forms are for build steps. Fetch the module once at build time and import it:
+
+```bash
+curl -fsS https://cms.example.com/api/v1/globals.js -o src/generated/globals.js
+```
+
+```js
+import { primaryNav, siteName } from './generated/globals.js'
+```
+
+**GraphQL** has every global as its own typed field under `site`, named by the camelCase
+of its slug. A query reads only the globals it names:
+
+```graphql
+{ site { siteName primaryNav keywords } }
+```
+
+Single `text`/`url` globals are `String`, list/set `text`/`url` are `[String!]`, and maps and
+`json` items are `JSON`. Use `globals(slugs: [...], names: [...])` when you also need metadata
+(`kind`, `updatedAt`, …), and `global(slug:)` or `global(name:)` for one.
+
+**Editing**: use the admin UI's *Site* section, `PUT /api/admin/globals/<slug>` with `{"value": …}`,
+or GraphQL `setGlobal(slug: "primary-nav", value: {...}) { value }` (`name:` works too). Writes need
+`update` on the `globals` resource in a role file (`admin`'s `"*"` covers it), for example:
+
+```yaml
+permissions:
+  globals: { read: true, update: true }
+```
+
+**Storage**: each global's value lives in one backend. `[globals] storage` in `cms.toml` sets
+the default, and a definition's `storage:` overrides it:
+
+| `storage` | Where |
+|---|---|
+| `database` (default) | `_cms_globals` table in the SQLite/PostgreSQL database |
+| `flatfile` | `<flatfile_dir>/<name>.<json\|yaml\|toml>` (`flatfile_format`). Hand edits and git are fine; files may hold just `value:` |
+| `redis` | Key `<redis_key_prefix><name>` in Redis or any Redis-protocol store (`redis_url` or `CMS_GLOBALS_REDIS_URL`) |
+
 ## Configuration
 
-Server config lives in a TOML file (`cms.example.toml` / `cms.postgres.toml`), pointed to via `CMS_CONFIG_PATH`. Content types, workflows, and roles are defined under `content-types/`, `workflows/`, and `roles/` respectively.
+Server config lives in a TOML file (`cms.example.toml` / `cms.postgres.toml`), pointed to via `CMS_CONFIG_PATH`. Content types, workflows, roles and globals are defined under `content-types/`, `workflows/`, `roles/` and `globals/` respectively.
 
 ## License
 

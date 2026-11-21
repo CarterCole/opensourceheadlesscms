@@ -293,9 +293,18 @@ pub async fn admin_config_handler(Extension(ctx): Extension<SchemaContext>) -> R
         .map(|(k, w)| (k.clone(), serde_json::json!({ "states": w.states })))
         .collect();
 
+    let mut globals: Vec<serde_json::Value> = config
+        .globals
+        .values()
+        .filter(|g| ctx.can_read_global(g))
+        .map(|g| serde_json::json!({ "slug": g.slug(), "label": g.display_label() }))
+        .collect();
+    globals.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
+
     Json(serde_json::json!({
         "content_types": content_types,
         "workflows": workflows,
+        "globals": globals,
     }))
     .into_response()
 }

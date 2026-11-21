@@ -9,7 +9,7 @@ use crate::schema::context::SchemaContext;
 use crate::schema::resolvers::{content_item_to_json, input_to_fields, json_to_gql};
 
 pub fn build_schema(
-    _config: &CmsConfig,
+    config: &CmsConfig,
     ctx_template: SchemaContext,
 ) -> Result<Schema, SchemaError> {
     let content_item = Object::new("ContentItem")
@@ -229,10 +229,184 @@ pub fn build_schema(
             extract_json_field("status"),
         ));
 
+    // ---- Globals: type Global, query globals / global(slug|name), mutation setGlobal ----
+    let global_type = ["slug", "name", "label", "kind", "item", "storage"]
+        .into_iter()
+        .fold(Object::new("Global"), |o, f| {
+            o.field(Field::new(
+                f,
+                TypeRef::named_nn(TypeRef::STRING),
+                extract_json_field(f),
+            ))
+        })
+        .field(Field::new(
+            "description",
+            TypeRef::named(TypeRef::STRING),
+            extract_json_field("description"),
+        ))
+        .field(Field::new(
+            "public",
+            TypeRef::named_nn(TypeRef::BOOLEAN),
+            extract_json_field("public"),
+        ))
+        .field(Field::new(
+            "value",
+            TypeRef::named("JSON"),
+            extract_json_field("value"),
+        ))
+        .field(Field::new(
+            "updatedAt",
+            TypeRef::named("DateTime"),
+            extract_json_field("updatedAt"),
+        ))
+        .field(Field::new(
+            "updatedBy",
+            TypeRef::named(TypeRef::STRING),
+            extract_json_field("updatedBy"),
+        ));
+
+    let globals_field = Field::new("globals", TypeRef::named_nn_list_nn("Global"), |ctx| {
+        FieldFuture::new(async move {
+            let gql_ctx = ctx.ctx.data::<SchemaContext>()?;
+            let list_arg = |k: &str| -> Option<Vec<String>> {
+                let v = ctx.args.get(k)?;
+                let list = v.list().ok()?;
+                Some(
+                    list.iter()
+                        .filter_map(|x| x.string().ok().map(str::to_string))
+                        .collect(),
+                )
+            };
+            let (slugs, names) = (list_arg("slugs"), list_arg("names"));
+            let mut defs: Vec<_> = gql_ctx
+                .config()
+                .globals
+                .values()
+                .filter(|d| gql_ctx.can_read_global(d))
+                .filter(|d| {
+                    (slugs.is_none() && names.is_none())
+                        || slugs.as_ref().is_some_and(|s| s.contains(&d.slug()))
+                        || names.as_ref().is_some_and(|n| n.contains(&d.name))
+                })
+                .collect();
+            defs.sort_by_key(|d| d.slug());
+            let mut out = Vec::with_capacity(defs.len());
+            for def in defs {
+                let r = gql_ctx.globals.read(def).await.map_err(gql_err)?;
+                out.push(FieldValue::value(global_to_gql(gql_ctx, &r)));
+            }
+            Ok(Some(FieldValue::list(out)))
+        })
+    })
+    .argument(InputValue::new(
+        "slugs",
+        TypeRef::named_list(TypeRef::STRING),
+    ))
+    .argument(InputValue::new(
+        "names",
+        TypeRef::named_list(TypeRef::STRING),
+    ));
+
+    // ---- Query: site { <camelSlug> … } — one typed field per global ----
+    // Fields resolve independently, so a query reads only the globals it names.
+    let mut site_defs: Vec<_> = config.globals.values().collect();
+    site_defs.sort_by_key(|d| d.slug());
+    let site_type = site_defs.iter().fold(Object::new("Site"), |obj, def| {
+        let name = def.name.clone();
+        let ty = match (def.kind, def.item) {
+            (_, crate::config::GlobalItem::Json) | (crate::config::GlobalKind::Map, _) => {
+                TypeRef::named("JSON")
+            }
+            (crate::config::GlobalKind::Single, _) => TypeRef::named(TypeRef::STRING),
+            (crate::config::GlobalKind::List | crate::config::GlobalKind::Set, _) => {
+                TypeRef::named_nn_list(TypeRef::STRING)
+            }
+        };
+        let mut field = Field::new(def.js_ident(), ty, move |ctx| {
+            let name = name.clone();
+            FieldFuture::new(async move {
+                let gql_ctx = ctx.ctx.data::<SchemaContext>()?;
+                // Unreadable (non-public, anonymous) → null, as with `global`.
+                let Some(def) = gql_ctx
+                    .config()
+                    .global(&name)
+                    .filter(|d| gql_ctx.can_read_global(d))
+                else {
+                    return Ok(None);
+                };
+                let r = gql_ctx.globals.read(def).await.map_err(gql_err)?;
+                Ok(Some(FieldValue::value(json_to_gql(&r.value))))
+            })
+        });
+        let desc = def
+            .description
+            .clone()
+            .unwrap_or_else(|| def.display_label().to_string());
+        field = field.description(format!("{desc} (`{}`)", def.slug()));
+        obj.field(field)
+    });
+    let site_field = (!site_defs.is_empty()).then(|| {
+        Field::new("site", TypeRef::named_nn("Site"), |_| {
+            FieldFuture::new(async { Ok(Some(FieldValue::owned_any(()))) })
+        })
+        .description("Site-wide globals, one field per global (camelCase of its slug)")
+    });
+
+    let global_field = Field::new("global", TypeRef::named("Global"), |ctx| {
+        FieldFuture::new(async move {
+            let gql_ctx = ctx.ctx.data::<SchemaContext>()?;
+            let Some(def) = find_global(gql_ctx, &ctx)?.filter(|d| gql_ctx.can_read_global(d))
+            else {
+                return Ok(None);
+            };
+            let r = gql_ctx.globals.read(def).await.map_err(gql_err)?;
+            Ok(Some(FieldValue::value(global_to_gql(gql_ctx, &r))))
+        })
+    })
+    .argument(InputValue::new("slug", TypeRef::named(TypeRef::STRING)))
+    .argument(InputValue::new("name", TypeRef::named(TypeRef::STRING)));
+
+    let set_global_field = Field::new("setGlobal", TypeRef::named_nn("Global"), |ctx| {
+        FieldFuture::new(async move {
+            let gql_ctx = ctx.ctx.data::<SchemaContext>()?;
+            let Some(user_id) = gql_ctx.user_id.clone() else {
+                return Err(async_graphql::Error::new("authentication required"));
+            };
+            if !gql_ctx.can_write_globals() {
+                return Err(async_graphql::Error::new("forbidden"));
+            }
+            let def = find_global(gql_ctx, &ctx)?
+                .ok_or_else(|| async_graphql::Error::new("unknown global"))?;
+            let value = ctx
+                .args
+                .try_get("value")?
+                .as_value()
+                .clone()
+                .into_json()
+                .map_err(gql_err)?;
+            let r = gql_ctx
+                .globals
+                .write(def, value, &user_id)
+                .await
+                .map_err(gql_err)?;
+            gql_ctx.cache.invalidate_prefix("_globals:").await;
+            Ok(Some(FieldValue::value(global_to_gql(gql_ctx, &r))))
+        })
+    })
+    .argument(InputValue::new("slug", TypeRef::named(TypeRef::STRING)))
+    .argument(InputValue::new("name", TypeRef::named(TypeRef::STRING)))
+    .argument(InputValue::new("value", TypeRef::named_nn("JSON")));
+
     let query = Object::new("Query")
         .field(content_field)
         .field(content_list_field)
-        .field(search_field);
+        .field(search_field)
+        .field(globals_field)
+        .field(global_field);
+    let query = match site_field {
+        Some(f) => query.field(f),
+        None => query,
+    };
 
     // ---- Mutation: createContent ----
     let ctx_c = ctx_template.clone();
@@ -448,7 +622,8 @@ pub fn build_schema(
         .field(create_field)
         .field(update_field)
         .field(transition_field)
-        .field(delete_field);
+        .field(delete_field)
+        .field(set_global_field);
 
     let (mutation_type_enum, content_event, subscription) =
         crate::schema::subscription::build_subscription();
@@ -458,6 +633,14 @@ pub fn build_schema(
         .register(Scalar::new("DateTime"))
         .register(content_item)
         .register(search_result)
+        .register(global_type);
+    // An object type with no fields is invalid GraphQL, so `Site` only exists with globals.
+    let schema = if site_defs.is_empty() {
+        schema
+    } else {
+        schema.register(site_type)
+    };
+    let schema = schema
         .register(query)
         .register(mutation)
         .register(mutation_type_enum)
@@ -469,6 +652,46 @@ pub fn build_schema(
         .finish()?;
 
     Ok(schema)
+}
+
+fn gql_err(e: impl std::fmt::Display) -> async_graphql::Error {
+    async_graphql::Error::new(e.to_string())
+}
+
+/// Resolve a `slug:` or `name:` argument (exactly one) to its definition.
+fn find_global<'a>(
+    gql_ctx: &'a SchemaContext,
+    ctx: &ResolverContext,
+) -> Result<Option<&'a crate::config::GlobalConfig>, async_graphql::Error> {
+    let arg = |k: &str| {
+        ctx.args
+            .get(k)
+            .and_then(|v| v.string().ok().map(str::to_string))
+    };
+    match (arg("slug"), arg("name")) {
+        (Some(slug), None) => Ok(gql_ctx.config().global_by_slug(&slug)),
+        (None, Some(name)) => Ok(gql_ctx.config().global(&name)),
+        _ => Err(async_graphql::Error::new(
+            "provide exactly one of slug or name",
+        )),
+    }
+}
+
+fn global_to_gql(ctx: &SchemaContext, r: &crate::globals::ResolvedGlobal) -> Value {
+    let lower = |v: serde_json::Value| v.as_str().unwrap_or_default().to_string();
+    json_to_gql(&serde_json::json!({
+        "slug": r.def.slug(),
+        "name": r.def.name,
+        "label": r.def.display_label(),
+        "description": r.def.description,
+        "kind": lower(serde_json::json!(r.def.kind)),
+        "item": lower(serde_json::json!(r.def.item)),
+        "storage": lower(serde_json::json!(r.def.storage.unwrap_or(ctx.config().server.globals.storage))),
+        "public": r.def.public,
+        "value": r.value,
+        "updatedAt": r.stored.as_ref().and_then(|s| s.updated_at).map(|t| t.to_rfc3339()),
+        "updatedBy": r.stored.as_ref().and_then(|s| s.updated_by.clone()),
+    }))
 }
 
 /// Largest page a GraphQL list query may request.

@@ -27,6 +27,7 @@ git_author_email = "cms@example.com"
 content_types = "./content-types"
 workflows = "./workflows"
 roles = "./roles"
+globals = "./globals"
 
 [media]
 storage = "local"

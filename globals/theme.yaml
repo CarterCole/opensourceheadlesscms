@@ -1,0 +1,9 @@
+# Map of names to arbitrary JSON objects, kept in a flat file instead of the database.
+name: theme
+label: Theme tokens
+kind: map
+item: json
+storage: flatfile          # overrides [globals] storage for this one
+default:
+  light: { background: "#ffffff", text: "#111111" }
+  dark: { background: "#111111", text: "#f5f5f5" }

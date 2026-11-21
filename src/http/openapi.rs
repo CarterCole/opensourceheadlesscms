@@ -95,6 +95,9 @@ impl Modify for BearerAuth {
         crate::http::rest::list_handler,
         crate::http::rest::get_by_slug_handler,
         crate::http::rest::search_handler,
+        crate::http::globals::list_globals_handler,
+        crate::http::globals::globals_js_handler,
+        crate::http::globals::get_global_handler,
         crate::http::auth::login_handler,
     ),
     components(
@@ -110,6 +113,7 @@ impl Modify for BearerAuth {
     ),
     tags(
         (name = "Content", description = "Public CDN-cacheable content endpoints (no auth required)"),
+        (name = "Globals", description = "Site-wide settings (strings, lists, sets, maps), addressable by slug; `.js` forms are ES modules for build-time import"),
         (name = "Auth",    description = "Authentication — obtain a Bearer token"),
         (name = "System",  description = "Operational endpoints"),
     ),

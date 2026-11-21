@@ -36,3 +36,5 @@ content/
 
 # TypeScript build cache
 *.tsbuildinfo
+# Flat-file globals values (default [globals] flatfile_dir); drop this line to keep them in git
+data/

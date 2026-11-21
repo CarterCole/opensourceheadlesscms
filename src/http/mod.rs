@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod globals;
 pub mod graphql;
 pub mod middleware;
 pub mod oidc;

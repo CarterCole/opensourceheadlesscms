@@ -196,10 +196,12 @@ mod tests {
                 media: MediaConfig::default(),
                 security: Default::default(),
                 oidc: None,
+                globals: Default::default(),
             },
             content_types: HashMap::new(),
             workflows: HashMap::new(),
             roles: roles.into_iter().map(|r| (r.name.clone(), r)).collect(),
+            globals: HashMap::new(),
         }
     }
 

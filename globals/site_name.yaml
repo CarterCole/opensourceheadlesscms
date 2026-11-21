@@ -1,0 +1,5 @@
+# A single string.
+name: site_name
+label: Site name
+kind: single
+default: My Site

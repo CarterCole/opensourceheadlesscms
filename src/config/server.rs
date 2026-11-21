@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::config::global::GlobalStorage;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     #[serde(default = "default_http_port")]
@@ -27,6 +29,8 @@ pub struct ServerConfig {
     /// "Sign in with Kith" (or any OpenID Connect provider) for the admin UI. Absent = off.
     #[serde(default)]
     pub oidc: Option<OidcConfig>,
+    #[serde(default)]
+    pub globals: GlobalsServerConfig,
 }
 
 fn default_http_port() -> u16 {
@@ -109,7 +113,7 @@ fn default_git_author_email() -> String {
     "cms@example.com".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigDirs {
     #[serde(default = "default_content_types_dir")]
     pub content_types: String,
@@ -117,6 +121,79 @@ pub struct ConfigDirs {
     pub workflows: String,
     #[serde(default = "default_roles_dir")]
     pub roles: String,
+    /// Definitions of site-wide globals (one YAML file each).
+    #[serde(default = "default_globals_dir")]
+    pub globals: String,
+}
+
+// Not derived: a missing `[config_dirs]` table must still mean the default directories.
+impl Default for ConfigDirs {
+    fn default() -> Self {
+        Self {
+            content_types: default_content_types_dir(),
+            workflows: default_workflows_dir(),
+            roles: default_roles_dir(),
+            globals: default_globals_dir(),
+        }
+    }
+}
+
+fn default_globals_dir() -> String {
+    "./globals".to_string()
+}
+
+/// `[globals]`: where global values are stored unless a definition says otherwise.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalsServerConfig {
+    #[serde(default)]
+    pub storage: GlobalStorage,
+    /// Directory for the `flatfile` backend (one file per global).
+    #[serde(default = "default_globals_data_dir")]
+    pub flatfile_dir: String,
+    #[serde(default)]
+    pub flatfile_format: FlatfileFormat,
+    /// Connection URL for the `redis` backend (or `CMS_GLOBALS_REDIS_URL`).
+    pub redis_url: Option<String>,
+    #[serde(default = "default_redis_prefix")]
+    pub redis_key_prefix: String,
+}
+
+impl Default for GlobalsServerConfig {
+    fn default() -> Self {
+        Self {
+            storage: GlobalStorage::default(),
+            flatfile_dir: default_globals_data_dir(),
+            flatfile_format: FlatfileFormat::default(),
+            redis_url: None,
+            redis_key_prefix: default_redis_prefix(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FlatfileFormat {
+    Json,
+    #[default]
+    Yaml,
+    Toml,
+}
+
+impl FlatfileFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            FlatfileFormat::Json => "json",
+            FlatfileFormat::Yaml => "yaml",
+            FlatfileFormat::Toml => "toml",
+        }
+    }
+}
+
+fn default_globals_data_dir() -> String {
+    "./data/globals".to_string()
+}
+fn default_redis_prefix() -> String {
+    "cms:global:".to_string()
 }
 
 fn default_content_types_dir() -> String {

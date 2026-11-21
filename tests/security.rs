@@ -128,10 +128,12 @@ fn config() -> CmsConfig {
             media: MediaConfig::default(),
             security: Default::default(),
             oidc: None,
+            globals: Default::default(),
         },
         content_types: HashMap::from([("article".to_string(), article)]),
         workflows: HashMap::from([("editorial".to_string(), workflow)]),
         roles: HashMap::from([("admin".to_string(), admin), ("editor".to_string(), editor)]),
+        globals: HashMap::new(),
     }
 }
 

@@ -800,6 +800,47 @@ impl ContentStore for SqliteStore {
         Ok(())
     }
 
+    // --- Globals ---
+
+    async fn get_global(&self, name: &str) -> Result<Option<crate::core::StoredGlobal>, CmsError> {
+        let row = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT value, updated_at, updated_by FROM _cms_globals WHERE name = ?",
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| CmsError::Storage(format!("get_global: {e}")))?;
+        let Some((value, updated_at, updated_by)) = row else {
+            return Ok(None);
+        };
+        Ok(Some(crate::core::StoredGlobal {
+            value: serde_json::from_str(&value)?,
+            updated_at: Some(parse_dt(&updated_at)?),
+            updated_by: Some(updated_by),
+        }))
+    }
+
+    async fn put_global(
+        &self,
+        name: &str,
+        value: &crate::core::StoredGlobal,
+    ) -> Result<(), CmsError> {
+        let updated_at = value.updated_at.unwrap_or_else(Utc::now).to_rfc3339();
+        sqlx::query(
+            "INSERT INTO _cms_globals (name, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
+             ON CONFLICT (name) DO UPDATE SET value = excluded.value,
+                 updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+        )
+        .bind(name)
+        .bind(serde_json::to_string(&value.value)?)
+        .bind(&updated_at)
+        .bind(value.updated_by.as_deref().unwrap_or(""))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| CmsError::Storage(format!("put_global: {e}")))?;
+        Ok(())
+    }
+
     // --- Migrations ---
 
     async fn run_migrations(&self) -> Result<(), CmsError> {

@@ -39,6 +39,7 @@ COPY migrations/ migrations/
 COPY content-types/ content-types/
 COPY workflows/ workflows/
 COPY roles/ roles/
+COPY globals/ globals/
 
 USER cms
 

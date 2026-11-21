@@ -40,6 +40,15 @@ git_author_email = "cms@example.com"
 content_types = "./content-types"
 workflows = "./workflows"
 roles = "./roles"
+globals = "./globals"          # site-wide global definitions (one YAML file each)
+
+# Where global values are stored. A definition's own `storage:` overrides this.
+[globals]
+storage = "database"           # "database" (the [database] above) | "flatfile" | "redis"
+flatfile_dir = "./data/globals"
+flatfile_format = "yaml"       # "json" | "yaml" | "toml"
+# redis_url = "redis://localhost:6379"    # or CMS_GLOBALS_REDIS_URL
+# redis_key_prefix = "cms:global:"
 
 [media]
 storage = "local"       # "local" | "s3" | "r2"

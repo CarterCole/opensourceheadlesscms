@@ -180,3 +180,20 @@ fn workflow_empty_states_initial_returns_draft() {
     };
     assert_eq!(wf.initial_state(), "draft");
 }
+
+#[test]
+fn globals_with_clashing_graphql_names_are_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("a.yaml"),
+        "name: a\nslug: a-b2\nkind: single\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("b.yaml"),
+        "name: b\nslug: a-b-2\nkind: single\n",
+    )
+    .unwrap();
+    let err = crate::config::loader::load_globals(dir.path().to_str().unwrap()).unwrap_err();
+    assert!(err.to_string().contains("aB2"), "{err}");
+}

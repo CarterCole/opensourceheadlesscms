@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import ContentList from './pages/ContentList'
 import ContentEditor from './pages/ContentEditor'
 import Users from './pages/Users'
+import Globals from './pages/Globals'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const status = useAuthStore((s) => s.status)
@@ -37,6 +38,8 @@ export default function App() {
           <Route path="content/:type/new" element={<ContentEditor />} />
           <Route path="content/:type/:id/edit" element={<ContentEditor />} />
           <Route path="users" element={<Users />} />
+          <Route path="globals" element={<Globals />} />
+          <Route path="globals/:slug" element={<Globals />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -118,3 +118,14 @@ pub struct SearchResult {
     pub page: u32,
     pub per_page: u32,
 }
+
+/// A saved global value plus who last changed it (metadata may be absent for values
+/// written by hand into a flat file).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredGlobal {
+    pub value: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+}

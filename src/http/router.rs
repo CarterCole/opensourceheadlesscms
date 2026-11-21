@@ -6,7 +6,7 @@ use axum::{
     extract::DefaultBodyLimit,
     http::{header, HeaderName, HeaderValue, Method},
     middleware,
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use std::sync::Arc;
@@ -22,6 +22,10 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::http::{
     auth::{login_handler, logout_handler, me_handler, AuthState},
+    globals::{
+        admin_list_globals_handler, admin_put_global_handler, get_global_handler,
+        globals_js_handler, list_globals_handler,
+    },
     graphql::{graphql_handler, graphql_playground_handler},
     middleware::{jwt_auth_middleware, AuthMiddlewareState},
     oidc::{self, OidcClient, OidcState},
@@ -120,6 +124,10 @@ pub fn build_router(cfg: RouterConfig) -> Router {
 
     let public_api = Router::new()
         .route("/api/v1/search", get(search_handler))
+        // Static segments win over `/api/v1/{type}`, so these shadow a type named `globals`.
+        .route("/api/v1/globals", get(list_globals_handler))
+        .route("/api/v1/globals.js", get(globals_js_handler))
+        .route("/api/v1/globals/{slug}", get(get_global_handler))
         .route("/api/v1/{type}", get(list_handler))
         .route("/api/v1/{type}/{slug}", get(get_by_slug_handler))
         .with_state(rest_state);
@@ -145,7 +153,14 @@ pub fn build_router(cfg: RouterConfig) -> Router {
         cookie_secure,
     });
 
-    let admin_api = Router::new().route("/api/admin/config", get(admin_config_handler));
+    let admin_api = Router::new()
+        .route("/api/admin/config", get(admin_config_handler))
+        .route("/api/admin/globals", get(admin_list_globals_handler))
+        .route("/api/admin/globals/{slug}", put(admin_put_global_handler))
+        .with_state(RestState {
+            store: cfg.store.clone(),
+            cache: cfg.cache.clone(),
+        });
 
     let swagger = SwaggerUi::new("/api/docs").url("/api/openapi.json", ApiDoc::openapi());
 

@@ -3,7 +3,7 @@ use std::path::Path;
 use thiserror::Error;
 use tracing::{info, warn};
 
-use crate::config::{ContentTypeConfig, RoleConfig, ServerConfig, WorkflowConfig};
+use crate::config::{ContentTypeConfig, GlobalConfig, RoleConfig, ServerConfig, WorkflowConfig};
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -16,6 +16,8 @@ pub enum ConfigError {
     },
     #[error("toml parse error: {0}")]
     Toml(String),
+    #[error("invalid global definition: {0}")]
+    Global(String),
     #[error("missing required config: {0}")]
     Missing(String),
 }
@@ -26,6 +28,7 @@ pub struct CmsConfig {
     pub content_types: HashMap<String, ContentTypeConfig>,
     pub workflows: HashMap<String, WorkflowConfig>,
     pub roles: HashMap<String, RoleConfig>,
+    pub globals: HashMap<String, GlobalConfig>,
 }
 
 impl CmsConfig {
@@ -39,6 +42,14 @@ impl CmsConfig {
 
     pub fn workflow_for_type(&self, ct: &ContentTypeConfig) -> Option<&WorkflowConfig> {
         ct.workflow.as_deref().and_then(|w| self.workflows.get(w))
+    }
+
+    pub fn global(&self, name: &str) -> Option<&GlobalConfig> {
+        self.globals.get(name)
+    }
+
+    pub fn global_by_slug(&self, slug: &str) -> Option<&GlobalConfig> {
+        self.globals.values().find(|g| g.slug() == slug)
     }
 
     pub fn role(&self, name: &str) -> Option<&RoleConfig> {
@@ -60,10 +71,11 @@ impl ConfigLoader {
     pub fn load(&self) -> Result<CmsConfig, ConfigError> {
         let server = self.load_server_config()?;
 
-        let content_types = load_yaml_dir::<ContentTypeConfig>(&server.config_dirs.content_types)?
-            .into_iter()
-            .map(|ct| (ct.name.clone(), ct))
-            .collect();
+        let content_types: HashMap<String, ContentTypeConfig> =
+            load_yaml_dir::<ContentTypeConfig>(&server.config_dirs.content_types)?
+                .into_iter()
+                .map(|ct| (ct.name.clone(), ct))
+                .collect();
 
         let workflows = load_yaml_dir::<WorkflowConfig>(&server.config_dirs.workflows)?
             .into_iter()
@@ -75,11 +87,17 @@ impl ConfigLoader {
             .map(|r| (r.name.clone(), r))
             .collect();
 
+        let globals = load_globals(&server.config_dirs.globals)?;
+        if content_types.contains_key("globals") {
+            warn!("content type `globals` is shadowed by /api/v1/globals; rename it");
+        }
+
         Ok(CmsConfig {
             server,
             content_types,
             workflows,
             roles,
+            globals,
         })
     }
 
@@ -87,6 +105,32 @@ impl ConfigLoader {
         let content = std::fs::read_to_string(&self.config_path)?;
         toml::from_str::<ServerConfig>(&content).map_err(|e| ConfigError::Toml(e.to_string()))
     }
+}
+
+pub(crate) fn load_globals(dir: &str) -> Result<HashMap<String, GlobalConfig>, ConfigError> {
+    let mut out = HashMap::new();
+    for g in load_yaml_dir::<GlobalConfig>(dir)? {
+        g.check().map_err(ConfigError::Global)?;
+        if out.contains_key(&g.name) {
+            return Err(ConfigError::Global(format!(
+                "`{}` is defined twice",
+                g.name
+            )));
+        }
+        if let Some(other) = out
+            .values()
+            .find(|o: &&GlobalConfig| o.js_ident() == g.js_ident())
+        {
+            return Err(ConfigError::Global(format!(
+                "`{}` and `{}` have the same slug or GraphQL/JS name (`{}`)",
+                other.name,
+                g.name,
+                g.js_ident()
+            )));
+        }
+        out.insert(g.name.clone(), g);
+    }
+    Ok(out)
 }
 
 fn load_yaml_dir<T: for<'de> serde::Deserialize<'de>>(dir: &str) -> Result<Vec<T>, ConfigError> {
