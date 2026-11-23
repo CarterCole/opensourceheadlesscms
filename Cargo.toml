@@ -58,7 +58,7 @@ thiserror = "1"
 anyhow = "1"
 
 # Config
-toml = "0.8"
+toml = "1.2"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
