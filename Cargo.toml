@@ -50,7 +50,7 @@ moka = { version = "0.12", features = ["future"] }
 
 # Auth
 jsonwebtoken = "9"
-argon2 = "0.5"
+argon2 = "0.6"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }
 
 # Error handling
