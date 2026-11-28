@@ -28,7 +28,7 @@ RUN touch src/*.rs src/**/*.rs 2>/dev/null || true
 RUN cargo build --release --bin cms-server
 
 # Stage 2: admin UI bundle (only built when the "admin" target is requested)
-FROM node:22-slim AS ui
+FROM node:26-slim AS ui
 WORKDIR /ui
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
