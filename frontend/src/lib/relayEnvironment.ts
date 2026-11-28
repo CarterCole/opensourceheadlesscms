@@ -23,7 +23,7 @@ const fetchGraphQL: FetchFunction = async (request, variables) => {
 
   if (res.status === 401) {
     useAuthStore.getState().clearSession()
-    window.location.href = '/login'
+    window.location.href = `${import.meta.env.BASE_URL}login`
     throw new Error('Unauthorized')
   }
 

@@ -1,7 +1,10 @@
 services:
   # ── CMS server (SQLite, no external DB needed for quick-start) ────────────
   cms:
-    build: .
+    build:
+      context: .
+      # "api" (default): API only. "admin": also serves the admin UI at /admin/.
+      target: ${CMS_IMAGE_TARGET:-api}
     ports:
       # Loopback only by default; put a TLS-terminating reverse proxy in front for
       # anything public. Set CMS_BIND=0.0.0.0 to expose directly.
@@ -25,7 +28,10 @@ services:
 
   # ── Full stack: CMS + PostgreSQL + Redis ──────────────────────────────────
   cms-pg:
-    build: .
+    build:
+      context: .
+      # "api" (default): API only. "admin": also serves the admin UI at /admin/.
+      target: ${CMS_IMAGE_TARGET:-api}
     depends_on:
       postgres:
         condition: service_healthy

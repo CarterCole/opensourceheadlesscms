@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tower_http::{
     cors::{AllowOrigin, Any, CorsLayer},
-    services::ServeDir,
+    services::{ServeDir, ServeFile},
     set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
@@ -188,13 +188,19 @@ pub fn build_router(cfg: RouterConfig) -> Router {
         router = router.layer(cors);
     }
 
-    // Serve admin UI static files at /admin/* if the dist dir is present
+    // Serve admin UI static files at /admin/* if the dist dir is present. Paths that are not
+    // files (client-side routes such as /admin/content/post) get index.html, so deep links
+    // and reloads work.
     if let Some(dir) = cfg.admin_ui_dir {
-        if std::path::Path::new(&dir).exists() {
+        let dir = std::path::PathBuf::from(dir);
+        if dir.join("index.html").exists() {
+            let index = ServeFile::new(dir.join("index.html"));
             let admin_ui = Router::new()
                 .nest_service(
                     "/admin",
-                    ServeDir::new(dir).append_index_html_on_directories(true),
+                    ServeDir::new(&dir)
+                        .append_index_html_on_directories(true)
+                        .fallback(index),
                 )
                 .layer(SetResponseHeaderLayer::overriding(
                     header::CONTENT_SECURITY_POLICY,

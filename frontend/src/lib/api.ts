@@ -5,7 +5,7 @@ export const API_BASE = ''
 
 function sessionExpired(): never {
   useAuthStore.getState().clearSession()
-  window.location.href = '/login'
+  window.location.href = `${import.meta.env.BASE_URL}login`
   throw new Error('Unauthorized')
 }
 

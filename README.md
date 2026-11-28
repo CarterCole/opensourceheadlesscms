@@ -77,6 +77,22 @@ npm run dev
 
 The `postgres` profile requires `JWT_SECRET` and `POSTGRES_PASSWORD` to be set (copy `.env.example` to `.env`, or export them; `demo.sh` generates throwaway values). `POSTGRES_DB` and `POSTGRES_USER` default to `cms`. Ports bind to `127.0.0.1` unless `CMS_BIND` says otherwise.
 
+### Image with or without the admin UI
+
+The Dockerfile has two targets. The default, `api`, is the API server alone: no admin UI files
+are in the image. The `admin` target adds the built admin UI (about 1 MB of static files; Node is
+used only while building and is not in the image), served at `http://<host>:8080/admin/`.
+
+```bash
+docker build -t cms .                    # API only (default)
+docker build --target admin -t cms .     # API + admin UI at /admin/
+CMS_IMAGE_TARGET=admin docker compose --profile postgres up --build
+```
+
+The session cookie is `Secure` when `env = "production"`, so browsers only keep it over HTTPS
+(or on `localhost`). Serve `/admin/` through TLS, or set `[security] cookie_secure = false` only
+on a private network.
+
 ## Security
 
 Read [SECURITY.md](SECURITY.md) before exposing an instance. In short: set a long random `CMS_JWT_SECRET` (the server refuses to start in `production` without one), keep `env = "production"`, put TLS and login rate-limiting in front of it, and rotate the first-run admin password. Report vulnerabilities privately via GitHub security advisories.

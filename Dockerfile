@@ -1,3 +1,8 @@
+# Two runtime targets, chosen at build time:
+#   docker build .                 -> "api":   the API server only (the default; no admin UI files)
+#   docker build --target admin .  -> "admin": the same image plus the admin UI, served at /admin/
+# Node is used only in the "ui" build stage and never ships in either image.
+
 # Stage 1: build
 FROM rust:1.100-slim AS builder
 
@@ -22,8 +27,16 @@ COPY migrations/ migrations/
 RUN touch src/*.rs src/**/*.rs 2>/dev/null || true
 RUN cargo build --release --bin cms-server
 
-# Stage 2: minimal runtime image
-FROM debian:bookworm-slim
+# Stage 2: admin UI bundle (only built when the "admin" target is requested)
+FROM node:22-slim AS ui
+WORKDIR /ui
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 3: minimal runtime image
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y ca-certificates libssl3 curl && rm -rf /var/lib/apt/lists/*
 
@@ -53,3 +66,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD curl -f http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["cms-server"]
+
+# Opt-in: runtime plus the admin UI (cms-server serves frontend/dist at /admin/)
+FROM runtime AS admin
+COPY --from=ui /ui/dist /app/frontend/dist
+
+# Default (last stage): the API server only
+FROM runtime AS api
